@@ -111,8 +111,10 @@ public class ContentServiceImpl implements ContentService {
         // TODO: SJ: Refactor in 4.x as this already exists in Crafter Core (which is part of the new Studio)
         String content = null;
 
-        try {
-            content = IOUtils.toString(_contentRepository.getContent(site, path));
+        try (InputStream is = _contentRepository.getContent(site, path)) {
+            if (is != null) {
+                content = IOUtils.toString(is);
+            }
         }
         catch(Exception err) {
             logger.debug("Failed to get content as string for path {0}", err, path);
@@ -480,7 +482,9 @@ public class ContentServiceImpl implements ContentService {
         objectMetadataManager.deleteObjectMetadata(site, path);
         dependencyService.deleteDependenciesForSiteAndPath(site, path);
 
-        _contentRepository.insertGitLog(site, commitId, 1);
+        if (StringUtils.isNotEmpty(commitId)) {
+            _contentRepository.insertGitLog(site, commitId, 1);
+        }
 
         PreviewEventContext context = new PreviewEventContext();
         context.setSite(site);
@@ -779,6 +783,7 @@ public class ContentServiceImpl implements ContentService {
         }
 
         // write activity stream
+        activityService.renameContentId(site, fromPath, movePath);
         ActivityService.ActivityType activityType = ActivityService.ActivityType.MOVED;
         Map<String, String> extraInfo = new HashMap<String, String>();
         if (renamedItem.isFolder()) {
@@ -822,18 +827,21 @@ public class ContentServiceImpl implements ContentService {
                 }
             }
 
-            StringBuffer assetContent = new StringBuffer(getContentAsString(site, movePath));
-            Map<String, Set<String>> globalDeps = new HashMap<String, Set<String>>();
-            try {
-                if (isCss) {
-                    dependencyService.extractDependenciesStyle(site, movePath, assetContent, globalDeps);
-                } else if (isJs) {
-                    dependencyService.extractDependenciesJavascript(site, movePath, assetContent, globalDeps);
-                } else if (isTemplate) {
-                    dependencyService.extractDependenciesTemplate(site, movePath, assetContent, globalDeps);
+            String content = getContentAsString(site, movePath);
+            if (StringUtils.isNotEmpty(content)) {
+                StringBuffer assetContent = new StringBuffer(content);
+                Map<String, Set<String>> globalDeps = new HashMap<String, Set<String>>();
+                try {
+                    if (isCss) {
+                        dependencyService.extractDependenciesStyle(site, movePath, assetContent, globalDeps);
+                    } else if (isJs) {
+                        dependencyService.extractDependenciesJavascript(site, movePath, assetContent, globalDeps);
+                    } else if (isTemplate) {
+                        dependencyService.extractDependenciesTemplate(site, movePath, assetContent, globalDeps);
+                    }
+                } catch (ServiceException e) {
+                    logger.error("Error while updating dependencies on move content site: " + site + " path: " + movePath, e);
                 }
-            } catch (ServiceException e) {
-                logger.error("Error while updating dependencies on move content site: " + site + " path: " + movePath, e);
             }
         }
     }
