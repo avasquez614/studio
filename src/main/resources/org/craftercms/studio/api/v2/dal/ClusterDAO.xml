@@ -1,0 +1,110 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  ~ Copyright (C) 2007-2019 Crafter Software Corporation. All Rights Reserved.
+  ~
+  ~ This program is free software: you can redistribute it and/or modify
+  ~ it under the terms of the GNU General Public License as published by
+  ~ the Free Software Foundation, either version 3 of the License, or
+  ~ (at your option) any later version.
+  ~
+  ~ This program is distributed in the hope that it will be useful,
+  ~ but WITHOUT ANY WARRANTY; without even the implied warranty of
+  ~ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+  ~ GNU General Public License for more details.
+  ~
+  ~ You should have received a copy of the GNU General Public License
+  ~ along with this program.  If not, see <http://www.gnu.org/licenses/>.
+  -->
+
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<mapper namespace="org.craftercms.studio.api.v2.dal.ClusterDAO">
+
+    <resultMap id="ClusterMap" type="org.craftercms.studio.api.v2.dal.ClusterMember">
+        <id property="id" column="id"/>
+        <result property="localAddress" column="local_address" />
+        <result property="state" column="state" />
+        <result property="heartbeat" column="heartbeat" />
+        <result property="gitUrl" column="git_url" />
+        <result property="gitRemoteName" column="git_remote_name" />
+        <result property="gitAuthType" column="git_auth_type" />
+        <result property="gitUsername" column="git_username" />
+        <result property="gitPassword" column="git_password" />
+        <result property="gitToken" column="git_token" />
+        <result property="gitPrivateKey" column="git_private_key" />
+    </resultMap>
+
+    <select id="getAllMembers" resultMap="ClusterMap">
+        SELECT * FROM cluster
+    </select>
+
+    <select id="getOtherMembers" resultMap="ClusterMap" parameterType="Map">
+        SELECT * FROM cluster WHERE local_address &lt;&gt; #{localAddress} AND state = #{state}
+    </select>
+
+    <select id="countActiveMembers" resultType="int" parameterType="Map">
+        SELECT count(*) FROM cluster WHERE state = #{state}
+    </select>
+
+    <select id="getMemberById" resultMap="ClusterMap" parameterType="long">
+        SELECT * FROM cluster WHERE id = #{clusterMemberId}
+    </select>
+
+    <select id="memberExists" resultType="int" parameterType="String">
+        SELECT COUNT(*) FROM cluster WHERE git_url = #{memberUrl}
+    </select>
+    
+    <insert id="addMember" parameterType="org.craftercms.studio.api.v2.dal.ClusterMember">
+        INSERT INTO cluster (local_address, state, git_url, git_remote_name, git_auth_type, git_username,
+        git_password, git_token, git_private_key)
+        VALUES (#{localAddress}, #{state}, #{gitUrl}, #{gitRemoteName}, #{gitAuthType}, #{gitUsername},
+        #{gitPassword}, #{gitToken}, #{gitPrivateKey})
+    </insert>
+    
+    <update id="updateMember" parameterType="org.craftercms.studio.api.v2.dal.ClusterMember">
+        UPDATE cluster SET
+        state = #{state},
+        git_url = #{gitUrl},
+        git_remote_name = #{gitRemoteName},
+        git_auth_type = #{gitAuthType},
+        git_username = #{gitUsername},
+        git_password = #{gitPassword},
+        git_token = #{gitToken},
+        git_private_key = #{gitPrivateKey}
+        WHERE id = #{id}
+    </update>
+
+    <delete id="removeMembers" parameterType="java.util.Map">
+        DELETE FROM cluster WHERE state = #{inactiveState} AND id IN
+        <foreach collection="memberIds" index="index" separator="," item="memberId" open="(" close=")">
+            #{memberId}
+        </foreach>
+    </delete>
+
+    <select id="countRegistrations" resultType="int" parameterType="java.util.Map" >
+        SELECT COUNT(*) FROM cluster WHERE local_address = #{localAddress}
+    </select>
+
+    <delete id="removeMemberByLocalAddress" parameterType="java.util.Map">
+        DELETE FROM cluster WHERE local_address = #{localAddress}
+    </delete>
+
+    <update id="updateHeartbeat" parameterType="java.util.Map">
+        UPDATE cluster SET
+        heartbeat = CURRENT_TIMESTAMP,
+        state = #{state}
+        WHERE local_address = #{localAddress}
+    </update>
+
+    <select id="getMembersWithStaleHeartbeat" resultMap="ClusterMap" parameterType="java.util.Map">
+        SELECT * FROM cluster
+        WHERE heartbeat &lt; (CURRENT_TIMESTAMP - INTERVAL #{heartbeatStaleLimit} MINUTE)
+    </select>
+
+    <select id="getInactiveMembersWithStaleHeartbeat" resultMap="ClusterMap" parameterType="java.util.Map">
+        SELECT * FROM cluster
+        WHERE heartbeat &lt; (CURRENT_TIMESTAMP - INTERVAL #{inactivityLimit} MINUTE)
+        AND state = #{inactiveState}
+    </select>
+</mapper>

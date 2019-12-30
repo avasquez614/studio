@@ -1,31 +1,42 @@
-/*******************************************************************************
- * Crafter Studio Web-content authoring solution
- *     Copyright (C) 2007-2016 Crafter Software Corporation.
+/*
+ * Copyright (C) 2007-2019 Crafter Software Corporation. All Rights Reserved.
  *
- *     This program is free software: you can redistribute it and/or modify
- *     it under the terms of the GNU General Public License as published by
- *     the Free Software Foundation, either version 3 of the License, or
- *     (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
- *     This program is distributed in the hope that it will be useful,
- *     but WITHOUT ANY WARRANTY; without even the implied warranty of
- *     MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- *     GNU General Public License for more details.
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
  *
- *     You should have received a copy of the GNU General Public License
- *     along with this program.  If not, see <http://www.gnu.org/licenses/>.
- ******************************************************************************/
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ */
 package org.craftercms.studio.impl.v1.service.content;
 
-import java.io.*;
+import java.io.IOException;
 import java.io.InputStream;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.Comparator;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
+import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.io.FilenameUtils;
 import org.apache.commons.lang3.StringEscapeUtils;
 import org.apache.commons.lang3.StringUtils;
+import org.craftercms.commons.entitlements.exception.EntitlementException;
+import org.craftercms.commons.entitlements.model.EntitlementType;
+import org.craftercms.commons.entitlements.validator.EntitlementValidator;
 import org.craftercms.commons.validation.annotations.param.ValidateIntegerParam;
 import org.craftercms.commons.validation.annotations.param.ValidateParams;
 import org.craftercms.commons.validation.annotations.param.ValidateSecurePathParam;
@@ -34,33 +45,54 @@ import org.craftercms.studio.api.v1.constant.DmConstants;
 import org.craftercms.studio.api.v1.constant.DmXmlConstants;
 import org.craftercms.studio.api.v1.dal.ItemMetadata;
 import org.craftercms.studio.api.v1.dal.ItemState;
+import org.craftercms.studio.api.v1.dal.SiteFeed;
 import org.craftercms.studio.api.v1.ebus.PreviewEventContext;
 import org.craftercms.studio.api.v1.exception.ContentNotFoundException;
-import org.craftercms.studio.api.v1.exception.ServiceException;
+import org.craftercms.studio.api.v1.exception.ServiceLayerException;
+import org.craftercms.studio.api.v1.exception.SiteNotFoundException;
+import org.craftercms.studio.api.v1.exception.repository.InvalidRemoteUrlException;
+import org.craftercms.studio.api.v1.exception.security.AuthenticationException;
 import org.craftercms.studio.api.v1.executor.ProcessContentExecutor;
 import org.craftercms.studio.api.v1.log.Logger;
 import org.craftercms.studio.api.v1.log.LoggerFactory;
 import org.craftercms.studio.api.v1.repository.ContentRepository;
 import org.craftercms.studio.api.v1.repository.RepositoryItem;
 import org.craftercms.studio.api.v1.service.GeneralLockService;
-import org.craftercms.studio.api.v1.service.activity.ActivityService;
 import org.craftercms.studio.api.v1.service.configuration.ServicesConfig;
-import org.craftercms.studio.api.v1.service.content.*;
+import org.craftercms.studio.api.v1.service.content.ContentItemIdGenerator;
+import org.craftercms.studio.api.v1.service.content.ContentService;
+import org.craftercms.studio.api.v1.service.content.ContentTypeService;
+import org.craftercms.studio.api.v1.service.content.DmContentLifeCycleService;
+import org.craftercms.studio.api.v1.service.content.DmPageNavigationOrderService;
+import org.craftercms.studio.api.v1.service.content.ObjectMetadataManager;
 import org.craftercms.studio.api.v1.service.dependency.DependencyDiffService;
-import org.craftercms.studio.api.v1.service.dependency.DmDependencyService;
+import org.craftercms.studio.api.v1.service.dependency.DependencyService;
 import org.craftercms.studio.api.v1.service.event.EventService;
 import org.craftercms.studio.api.v1.service.objectstate.ObjectStateService;
+import org.craftercms.studio.api.v1.service.objectstate.State;
 import org.craftercms.studio.api.v1.service.objectstate.TransitionEvent;
-import org.craftercms.studio.api.v1.service.security.SecurityProvider;
 import org.craftercms.studio.api.v1.service.security.SecurityService;
 import org.craftercms.studio.api.v1.service.site.SiteService;
-import org.craftercms.studio.api.v1.to.*;
+import org.craftercms.studio.api.v1.to.ContentAssetInfoTO;
+import org.craftercms.studio.api.v1.to.ContentItemTO;
+import org.craftercms.studio.api.v1.to.ContentTypeConfigTO;
+import org.craftercms.studio.api.v1.to.CopyDependencyConfigTO;
+import org.craftercms.studio.api.v1.to.DeleteDependencyConfigTO;
+import org.craftercms.studio.api.v1.to.DmOrderTO;
+import org.craftercms.studio.api.v1.to.GoLiveDeleteCandidates;
+import org.craftercms.studio.api.v1.to.RenderingTemplateTO;
+import org.craftercms.studio.api.v1.to.ResultTO;
+import org.craftercms.studio.api.v1.to.VersionTO;
 import org.craftercms.studio.api.v1.util.DebugUtils;
-import org.craftercms.studio.api.v1.util.StudioConfiguration;
+import org.craftercms.studio.api.v2.dal.AuditLog;
+import org.craftercms.studio.api.v2.service.audit.internal.AuditServiceInternal;
+import org.craftercms.studio.api.v2.service.security.UserService;
+import org.craftercms.studio.api.v2.utils.StudioConfiguration;
 import org.craftercms.studio.impl.v1.util.ContentFormatUtils;
 import org.craftercms.studio.impl.v1.util.ContentItemOrderComparator;
 import org.craftercms.studio.impl.v1.util.ContentUtils;
 
+import org.craftercms.studio.impl.v2.utils.spring.ContentResource;
 import org.dom4j.Node;
 import org.dom4j.io.SAXReader;
 import org.dom4j.Document;
@@ -68,12 +100,39 @@ import org.dom4j.Element;
 import org.dom4j.DocumentException;
 
 import org.apache.commons.io.IOUtils;
+import org.springframework.core.io.Resource;
 import org.xml.sax.SAXException;
 
 import javax.activation.MimetypesFileTypeMap;
 
-import static org.craftercms.studio.api.v1.constant.StudioConstants.*;
+import static org.craftercms.studio.api.v1.constant.StudioConstants.CONTENT_ENCODING;
+import static org.craftercms.studio.api.v1.constant.StudioConstants.CONTENT_TYPE_ASSET;
+import static org.craftercms.studio.api.v1.constant.StudioConstants.CONTENT_TYPE_COMPONENT;
+import static org.craftercms.studio.api.v1.constant.StudioConstants.CONTENT_TYPE_CONTENT_TYPE;
+import static org.craftercms.studio.api.v1.constant.StudioConstants.CONTENT_TYPE_DOCUMENT;
+import static org.craftercms.studio.api.v1.constant.StudioConstants.CONTENT_TYPE_FOLDER;
+import static org.craftercms.studio.api.v1.constant.StudioConstants.CONTENT_TYPE_PAGE;
+import static org.craftercms.studio.api.v1.constant.StudioConstants.CONTENT_TYPE_RENDERING_TEMPLATE;
+import static org.craftercms.studio.api.v1.constant.StudioConstants.CONTENT_TYPE_SCRIPT;
+import static org.craftercms.studio.api.v1.constant.StudioConstants.CONTENT_TYPE_TAXONOMY;
+import static org.craftercms.studio.api.v1.constant.StudioConstants.CONTENT_TYPE_TAXONOMY_REGEX;
+import static org.craftercms.studio.api.v1.constant.StudioConstants.CONTENT_TYPE_UNKNOWN;
+import static org.craftercms.studio.api.v1.constant.StudioConstants.FILE_SEPARATOR;
 import static org.craftercms.studio.api.v1.ebus.EBusConstants.EVENT_PREVIEW_SYNC;
+import static org.craftercms.studio.api.v1.service.objectstate.TransitionEvent.REVERT;
+import static org.craftercms.studio.api.v1.service.objectstate.TransitionEvent.SAVE;
+import static org.craftercms.studio.api.v1.service.objectstate.TransitionEvent.SAVE_FOR_PREVIEW;
+import static org.craftercms.studio.api.v2.dal.AuditLogConstants.OPERATION_CREATE;
+import static org.craftercms.studio.api.v2.dal.AuditLogConstants.OPERATION_DELETE;
+import static org.craftercms.studio.api.v2.dal.AuditLogConstants.OPERATION_MOVE;
+import static org.craftercms.studio.api.v2.dal.AuditLogConstants.OPERATION_PULL_FROM_REMOTE;
+import static org.craftercms.studio.api.v2.dal.AuditLogConstants.OPERATION_PUSH_TO_REMOTE;
+import static org.craftercms.studio.api.v2.dal.AuditLogConstants.OPERATION_REVERT;
+import static org.craftercms.studio.api.v2.dal.AuditLogConstants.OPERATION_UPDATE;
+import static org.craftercms.studio.api.v2.dal.AuditLogConstants.TARGET_TYPE_CONTENT_ITEM;
+import static org.craftercms.studio.api.v2.dal.AuditLogConstants.TARGET_TYPE_FOLDER;
+import static org.craftercms.studio.api.v2.dal.AuditLogConstants.TARGET_TYPE_REMOTE_REPOSITORY;
+import static org.craftercms.studio.api.v2.utils.StudioConfiguration.CONFIGURATION_GLOBAL_SYSTEM_SITE;
 
 /**
  * Content Services that other services may use
@@ -85,6 +144,29 @@ public class ContentServiceImpl implements ContentService {
     // TODO: SJ: make that feature available to end user.
     private static final Logger logger = LoggerFactory.getLogger(ContentServiceImpl.class);
 
+    private static final String COPY_DEP_XPATH = "//*/text()[normalize-space(.)='{copyDep}']/parent::*";
+    private static final String COPY_DEP = "{copyDep}";
+
+    private ContentRepository _contentRepository;
+    protected ServicesConfig servicesConfig;
+    protected GeneralLockService generalLockService;
+    protected ObjectStateService objectStateService;
+    protected DependencyService dependencyService;
+    protected ProcessContentExecutor contentProcessor;
+    protected ObjectMetadataManager objectMetadataManager;
+    protected SecurityService securityService;
+    protected DmPageNavigationOrderService dmPageNavigationOrderService;
+    protected DmContentLifeCycleService dmContentLifeCycleService;
+    protected EventService eventService;
+    protected SiteService siteService;
+    protected ContentItemIdGenerator contentItemIdGenerator;
+    protected StudioConfiguration studioConfiguration;
+    protected DependencyDiffService dependencyDiffService;
+    protected ContentTypeService contentTypeService;
+    protected EntitlementValidator entitlementValidator;
+    protected AuditServiceInternal auditServiceInternal;
+    protected UserService userService;
+
     /**
      * file and folder name patterns for copied files and folders
      */
@@ -93,21 +175,36 @@ public class ContentServiceImpl implements ContentService {
 
     @Override
     @ValidateParams
-    public boolean contentExists(@ValidateStringParam(name = "site") String site, @ValidateSecurePathParam(name = "path") String path) {
+    public boolean contentExists(@ValidateStringParam(name = "site") String site,
+                                 @ValidateSecurePathParam(name = "path") String path) {
         // TODO: SJ: Refactor in 2.7.x as this might already exists in Crafter Core (which is part of the new Studio)
         return this._contentRepository.contentExists(site, path);
     }
 
     @Override
     @ValidateParams
-    public InputStream getContent(@ValidateStringParam(name = "site") String site, @ValidateSecurePathParam(name = "path") String path) throws ContentNotFoundException {
+    public InputStream getContent(@ValidateStringParam(name = "site") String site,
+                                  @ValidateSecurePathParam(name = "path") String path)
+            throws ContentNotFoundException {
         // TODO: SJ: Refactor in 4.x as this already exists in Crafter Core (which is part of the new Studio)
-        return this._contentRepository.getContent(site, path);
+        if (StringUtils.equals(site, studioConfiguration.getProperty(CONFIGURATION_GLOBAL_SYSTEM_SITE))) {
+            return this._contentRepository.getContent(StringUtils.EMPTY, path);
+        } else {
+            return this._contentRepository.getContent(site, path);
+        }
     }
 
     @Override
     @ValidateParams
-    public String getContentAsString(@ValidateStringParam(name = "site") String site, @ValidateSecurePathParam(name = "path") String path)  {
+    public long getContentSize(@ValidateStringParam(name = "site") String site,
+                               @ValidateStringParam(name = "path") String path) {
+        return _contentRepository.getContentSize(site, path);
+    }
+
+    @Override
+    @ValidateParams
+    public String getContentAsString(@ValidateStringParam(name = "site") String site,
+                                     @ValidateSecurePathParam(name = "path") String path)  {
         // TODO: SJ: Refactor in 4.x as this already exists in Crafter Core (which is part of the new Studio)
         String content = null;
 
@@ -125,7 +222,8 @@ public class ContentServiceImpl implements ContentService {
 
     @Override
     @ValidateParams
-    public Document getContentAsDocument(@ValidateStringParam(name = "site") String site, @ValidateSecurePathParam(name = "path") String path)
+    public Document getContentAsDocument(@ValidateStringParam(name = "site") String site,
+                                         @ValidateSecurePathParam(name = "path") String path)
             throws DocumentException {
         // TODO: SJ: Refactor in 4.x as this already exists in Crafter Core (which is part of the new Studio)
         Document retDocument = null;
@@ -165,9 +263,34 @@ public class ContentServiceImpl implements ContentService {
 
     @Override
     @ValidateParams
-    public void writeContent(@ValidateStringParam(name = "site") String site, @ValidateSecurePathParam(name = "path") String path, @ValidateStringParam(name = "fileName") String fileName, @ValidateStringParam(name = "contentType") String contentType, InputStream input,
-                             @ValidateStringParam(name = "createFolders") String createFolders, @ValidateStringParam(name = "edit") String edit, @ValidateStringParam(name = "unlock") String unlock) throws ServiceException {
+    public Resource getContentAsResource(@ValidateStringParam(name = "site") String site,
+                                         @ValidateSecurePathParam(name = "path") String path)
+        throws ContentNotFoundException {
+        if (contentExists(site, path)) {
+            return new ContentResource(this, site, path);
+        } else {
+            throw new ContentNotFoundException(path, site,
+                String.format("File '%s' not found in site '%s'", path, site));
+        }
+    }
+
+    @Override
+    @ValidateParams
+    public void writeContent(@ValidateStringParam(name = "site") String site,
+                             @ValidateSecurePathParam(name = "path") String path,
+                             @ValidateStringParam(name = "fileName") String fileName,
+                             @ValidateStringParam(name = "contentType") String contentType, InputStream input,
+                             @ValidateStringParam(name = "createFolders") String createFolders,
+                             @ValidateStringParam(name = "edit") String edit,
+                             @ValidateStringParam(name = "unlock") String unlock) throws ServiceLayerException {
         // TODO: SJ: refactor for 2.7.x
+
+        try {
+            entitlementValidator.validateEntitlement(EntitlementType.ITEM, 1);
+        } catch (EntitlementException e) {
+            throw new ServiceLayerException("Unable to complete request due to entitlement limits. Please contact your "
+                + "system administrator.");
+        }
 
         Map<String, String> params = new HashMap<String, String>();
         params.put(DmConstants.KEY_SITE, site);
@@ -184,7 +307,6 @@ public class ContentServiceImpl implements ContentService {
         if (contentExists) {
             lockKey = site + ":" + path;
         }
-        generalLockService.lock(lockKey);
         try {
             // Check if the user is saving and closing (releasing the lock) or just saving and will continue to edit
             // If "unlock" is empty, it means it's a save and close operation
@@ -207,7 +329,7 @@ public class ContentServiceImpl implements ContentService {
                         // TODO: SJ: Review and refactor/redo
                         logger.error("Error Content {0} is being processed (Object State is system "
                                 + "processing);", fileName);
-                        throw new ServiceException("Content " + fileName + " is in system processing, we can't write "
+                        throw new ServiceLayerException("Content " + fileName + " is in system processing, we can't write "
                                 + "it");
                     }
 
@@ -220,8 +342,11 @@ public class ContentServiceImpl implements ContentService {
                 }
             } else {
                 // Content does not exist; check for moved content and deleted content
-                if (objectStateService.deletedPathExists(site, path) || objectMetadataManager.movedPathExists(site, path)) {
-                    throw new ServiceException("Content " + path + " for site " + site + ", cannot be created because this name/URL was in use by another content item that has been moved or deleted by not yet published.");
+                if (objectStateService.deletedPathExists(site, path) ||
+                        objectMetadataManager.movedPathExists(site, path)) {
+                    throw new ServiceLayerException("Content " + path + " for site " + site + ", cannot be created " +
+                            "because this name/URL was in use by another content item that has been moved or" +
+                            " deleted by not yet published.");
                 }
             }
 
@@ -262,9 +387,9 @@ public class ContentServiceImpl implements ContentService {
             ContentItemTO itemTo = getContentItem(site, relativePath, 0);
             if (itemTo != null) {
                 if (isSaveAndClose) {
-                    objectStateService.transition(site, itemTo, org.craftercms.studio.api.v1.service.objectstate.TransitionEvent.SAVE);
+                    objectStateService.transition(site, itemTo, SAVE);
                 } else {
-                    objectStateService.transition(site, itemTo, org.craftercms.studio.api.v1.service.objectstate.TransitionEvent.SAVE_FOR_PREVIEW);
+                    objectStateService.transition(site, itemTo, SAVE_FOR_PREVIEW);
                 }
                 objectStateService.setSystemProcessing(site, itemTo.getUri(), false);
             } else {
@@ -284,15 +409,21 @@ public class ContentServiceImpl implements ContentService {
             objectStateService.setSystemProcessing(site, relativePath, false);
             objectStateService.setSystemProcessing(site, path, false);
             throw e;
-        } finally {
-            generalLockService.unlock(lockKey);
         }
     }
 
     @Override
     @ValidateParams
-    public void writeContentAndRename(@ValidateStringParam(name = "site") final String site, @ValidateSecurePathParam(name = "path") final String path, @ValidateSecurePathParam(name = "targetPath") final String targetPath, @ValidateStringParam(name = "fileName") final String fileName, @ValidateStringParam(name = "contentType") final String contentType, final InputStream input,
-                                      @ValidateStringParam(name = "createFolders") final String createFolders, @ValidateStringParam(name = "edit") final  String edit, @ValidateStringParam(name = "unlock") final String unlock, final boolean createFolder) throws ServiceException {
+    public void writeContentAndRename(@ValidateStringParam(name = "site") final String site,
+                                      @ValidateSecurePathParam(name = "path") final String path,
+                                      @ValidateSecurePathParam(name = "targetPath") final String targetPath,
+                                      @ValidateStringParam(name = "fileName") final String fileName,
+                                      @ValidateStringParam(name = "contentType") final String contentType,
+                                      final InputStream input,
+                                      @ValidateStringParam(name = "createFolders") final String createFolders,
+                                      @ValidateStringParam(name = "edit") final  String edit,
+                                      @ValidateStringParam(name = "unlock") final String unlock,
+                                      final boolean createFolder) throws ServiceLayerException {
         // TODO: SJ: The parameters need to be properly typed. Can't have Strings that actually mean boolean. Fix in
         // TODO: SJ: 2.7.x
         String id = site + ":" + path + ":" + fileName + ":" + contentType;
@@ -301,21 +432,12 @@ public class ContentServiceImpl implements ContentService {
         logger.debug("Write and rename for site '{}' path '{}' targetPath '{}' "
                 + "fileName '{}' content type '{}'", site, path, targetPath, fileName, contentType);
 
-        // TODO: SJ: The block below seems to be there to fix a stuck lock, refactor and remove in 2.7.x
-        if (!generalLockService.tryLock(id)) {
-            generalLockService.lock(id);
-            generalLockService.unlock(id);
-            return;
-        }
-
         try {
             writeContent(site, path, fileName, contentType, input, createFolders, edit, unlock);
             moveContent(site, path, targetPath);
-        } catch (ServiceException | RuntimeException e) {
+        } catch (ServiceLayerException | RuntimeException e) {
             logger.error("Error while executing write and rename for site '{}' path '{}' targetPath '{}' "
                     + "fileName '{}' content type '{}'", e, site, path, targetPath, fileName, contentType);
-        } finally {
-            generalLockService.unlock(id);
         }
     }
 
@@ -335,12 +457,24 @@ public class ContentServiceImpl implements ContentService {
      * @param unlock
      * 			unlock the content upon edit?
      * @return content asset info
-     * @throws ServiceException
+     * @throws ServiceLayerException
      */
     @Override
     @ValidateParams
-    public Map<String, Object> writeContentAsset(@ValidateStringParam(name = "site") String site, @ValidateSecurePathParam(name = "path") String path, @ValidateStringParam(name = "assetName") String assetName, InputStream in,
-                                                 String isImage, String allowedWidth, String allowedHeight, String allowLessSize, String draft, String unlock, String systemAsset) throws ServiceException {
+    public Map<String, Object> writeContentAsset(@ValidateStringParam(name = "site") String site,
+                                                 @ValidateSecurePathParam(name = "path") String path,
+                                                 @ValidateStringParam(name = "assetName") String assetName,
+                                                 InputStream in, String isImage, String allowedWidth,
+                                                 String allowedHeight, String allowLessSize, String draft,
+                                                 String unlock, String systemAsset) throws ServiceLayerException {
+
+        try {
+            entitlementValidator.validateEntitlement(EntitlementType.ITEM, 1);
+        } catch (EntitlementException e) {
+            throw new ServiceLayerException("Unable to complete request due to entitlement limits. Please contact your "
+                + "system administrator.");
+        }
+
         boolean isSystemAsset = Boolean.valueOf(systemAsset);
 
         Map<String, String> params = new HashMap<String, String>();
@@ -358,7 +492,7 @@ public class ContentServiceImpl implements ContentService {
         params.put(DmConstants.KEY_SYSTEM_ASSET, String.valueOf(isSystemAsset));
 
         boolean exists = contentExists(site, path+ FILE_SEPARATOR + assetName);
-        params.put(DmConstants.KEY_ACTIVITY_TYPE, (exists ? ActivityService.ActivityType.UPDATED.toString() : ActivityService.ActivityType.CREATED.toString()));
+        params.put(DmConstants.KEY_ACTIVITY_TYPE, (exists ? OPERATION_UPDATE : OPERATION_CREATE));
 
         String id = site + ":" + path + ":" + assetName + ":" + "";
         // processContent will close the input stream
@@ -371,15 +505,19 @@ public class ContentServiceImpl implements ContentService {
                 ItemState itemState = objectStateService.getObjectState(site, path);
                 if (itemState != null) {
                     if (itemState.getSystemProcessing() != 0) {
-                        logger.error(String.format("Error Content %s is being processed (Object State is SYSTEM_PROCESSING);", assetName));
+                        logger.error(String.format("Error Content %s is being processed " +
+                                "(Object State is SYSTEM_PROCESSING);", assetName));
                         throw new RuntimeException(String.format("Content \"%s\" is being processed", assetName));
                     }
                     objectStateService.setSystemProcessing(site, path, true);
                 }
             }
 
-            if (objectStateService.deletedPathExists(site, path) || objectMetadataManager.movedPathExists(site, path)) {
-                throw new ServiceException("Content " + path + " for site " + site + ", cannot be created because this name/URL was in use by another content item that has been moved or deleted by not yet published.");
+            if (objectStateService.deletedPathExists(site, path) ||
+                    objectMetadataManager.movedPathExists(site, path)) {
+                throw new ServiceLayerException("Content " + path + " for site " + site + ", cannot be created because"
+                    + " this name/URL was in use by another content item that has been moved or deleted by "
+                    + "not yet published.");
             }
             ResultTO result = processContent(id, in, false, params, DmConstants.CONTENT_CHAIN_ASSET);
             ContentAssetInfoTO assetInfoTO = (ContentAssetInfoTO)result.getItem();
@@ -391,7 +529,7 @@ public class ContentServiceImpl implements ContentService {
             item.setSizeUnit(assetInfoTO.getSizeUnit());
             if (item != null) {
                 if (result.getCommitId() != null) {
-                    objectStateService.transition(site, item, TransitionEvent.SAVE);
+                    objectStateService.transition(site, item, SAVE);
                 } else {
                     objectStateService.transition(site, item, TransitionEvent.CANCEL_EDIT);
                 }
@@ -422,7 +560,9 @@ public class ContentServiceImpl implements ContentService {
     // This method is used for writing configuration files, this needs to be refactored in 3.1+
     @Override
     @ValidateParams
-    public boolean writeContent(@ValidateStringParam(name = "site") String site, @ValidateSecurePathParam(name = "path") String path, InputStream content) throws ServiceException {
+    public boolean writeContent(@ValidateStringParam(name = "site") String site,
+                                @ValidateSecurePathParam(name = "path") String path, InputStream content)
+            throws ServiceLayerException {
         boolean result;
 
         String commitId = _contentRepository.writeContent(site, path, content);
@@ -444,17 +584,21 @@ public class ContentServiceImpl implements ContentService {
 
     @Override
     @ValidateParams
-    public boolean createFolder(@ValidateStringParam(name = "site") String site, @ValidateSecurePathParam(name = "path") String path, @ValidateStringParam(name = "name") String name) {
+    public boolean createFolder(@ValidateStringParam(name = "site") String site,
+                                @ValidateSecurePathParam(name = "path") String path,
+                                @ValidateStringParam(name = "name") String name) throws SiteNotFoundException {
         boolean toRet = false;
         String commitId = _contentRepository.createFolder(site, path, name);
         if (commitId != null) {
-            ActivityService.ActivityType activityType = ActivityService.ActivityType.CREATED;
-            String user = securityService.getCurrentUser();
-            Map<String, String> extraInfo = new HashMap<String, String>();
-            extraInfo.put(DmConstants.KEY_CONTENT_TYPE, CONTENT_TYPE_FOLDER);
-            activityService.postActivity(site, user, path + FILE_SEPARATOR + name, activityType, ActivityService.ActivitySource.UI, extraInfo);
-            // TODO: SJ: we're currently not keeping meta-data for folders and therefore nothing to update
-            // TODO: SJ: rethink this for 3.1+
+            SiteFeed siteFeed = siteService.getSite(site);
+            AuditLog auditLog = auditServiceInternal.createAuditLogEntry();
+            auditLog.setOperation(OPERATION_CREATE);
+            auditLog.setSiteId(siteFeed.getId());
+            auditLog.setActorId(securityService.getCurrentUser());
+            auditLog.setPrimaryTargetId(site + ":" + path + FILE_SEPARATOR + name);
+            auditLog.setPrimaryTargetType(TARGET_TYPE_FOLDER);
+            auditLog.setPrimaryTargetValue(path + FILE_SEPARATOR + name);
+            auditServiceInternal.insertAuditLog(auditLog);
             toRet = true;
         }
 
@@ -463,13 +607,17 @@ public class ContentServiceImpl implements ContentService {
 
     @Override
     @ValidateParams
-    public boolean deleteContent(@ValidateStringParam(name = "site") String site, @ValidateSecurePathParam(name = "path") String path, @ValidateStringParam(name = "approver") String approver) {
+    public boolean deleteContent(@ValidateStringParam(name = "site") String site,
+                                 @ValidateSecurePathParam(name = "path") String path,
+                                 @ValidateStringParam(name = "approver") String approver) throws SiteNotFoundException {
         return deleteContent(site, path, true, approver);
     }
 
     @Override
     @ValidateParams
-    public boolean deleteContent(@ValidateStringParam(name = "site") String site, @ValidateSecurePathParam(name = "path") String path, boolean generateActivity, @ValidateStringParam(name = "approver") String approver) {
+    public boolean deleteContent(@ValidateStringParam(name = "site") String site,
+                                 @ValidateSecurePathParam(name = "path") String path, boolean generateActivity,
+                                 @ValidateStringParam(name = "approver") String approver) throws SiteNotFoundException {
         String commitId;
         boolean toReturn = false;
         if (generateActivity) {
@@ -480,7 +628,11 @@ public class ContentServiceImpl implements ContentService {
 
         objectStateService.deleteObjectStateForPath(site, path);
         objectMetadataManager.deleteObjectMetadata(site, path);
-        dependencyService.deleteDependenciesForSiteAndPath(site, path);
+        try {
+            dependencyService.deleteItemDependencies(site, path);
+        } catch (ServiceLayerException e) {
+            logger.error("Error deleting dependencies for site " + site + " path " + path, e);
+        }
 
         if (StringUtils.isNotEmpty(commitId)) {
             _contentRepository.insertGitLog(site, commitId, 1);
@@ -500,7 +652,7 @@ public class ContentServiceImpl implements ContentService {
         return toReturn;
     }
 
-    protected void generateDeleteActivity(String site, String path, String approver) {
+    protected void generateDeleteActivity(String site, String path, String approver) throws SiteNotFoundException {
         // This method creates a database record to show the activity of deleting a file
         // TODO: SJ: This type of thing needs to move to the audit service which handles all records related to
         // TODO: SJ: activities. Fix in 3.1+ by introducing the audit service and refactoring accordingly
@@ -520,8 +672,16 @@ public class ContentServiceImpl implements ContentService {
                 extraInfo.put(DmConstants.KEY_CONTENT_TYPE, getContentTypeClass(site, path));
             }
             logger.debug("[DELETE] posting delete activity on " + path + " by " + user + " in " + site);
-
-            activityService.postActivity(site, user, path, ActivityService.ActivityType.DELETED, ActivityService.ActivitySource.UI, extraInfo);
+            SiteFeed siteFeed = siteService.getSite(site);
+            AuditLog auditLog = auditServiceInternal.createAuditLogEntry();
+            auditLog.setOperation(OPERATION_DELETE);
+            auditLog.setSiteId(siteFeed.getId());
+            auditLog.setActorId(user);
+            auditLog.setPrimaryTargetId(site + ":" + path);
+            auditLog.setPrimaryTargetType(TARGET_TYPE_CONTENT_ITEM);
+            auditLog.setPrimaryTargetValue(path);
+            auditLog.setPrimaryTargetSubtype(getContentTypeClass(site, path));
+            auditServiceInternal.insertAuditLog(auditLog);
             // process content life cycle
             if (path.endsWith(DmConstants.XML_PATTERN)) {
 
@@ -534,7 +694,9 @@ public class ContentServiceImpl implements ContentService {
 
     @Override
     @ValidateParams
-    public String copyContent(@ValidateStringParam(name = "site") String site, @ValidateSecurePathParam(name = "fromPath") String fromPath, @ValidateSecurePathParam(name = "toPath") String toPath) {
+    public String copyContent(@ValidateStringParam(name = "site") String site,
+                              @ValidateSecurePathParam(name = "fromPath") String fromPath,
+                              @ValidateSecurePathParam(name = "toPath") String toPath) {
         return copyContent(site, fromPath, toPath, new HashSet<String>());
     }
 
@@ -571,43 +733,60 @@ public class ContentServiceImpl implements ContentService {
                     try {
                         String contentType = fromItem.getContentType();
                         InputStream fromContent = getContent(site, fromPath);
-                        Document fromDocument = ContentUtils.convertStreamToXml(fromContent);
-                        Map<String, String> fromPageIds = getContentIds(fromDocument);
+                        if (fromPath.endsWith(DmConstants.XML_PATTERN)) {
+                            Document fromDocument = ContentUtils.convertStreamToXml(fromContent);
 
-                        logger.debug("copying file for site {0} from {1} to {2}, new name is {3}", site, fromPath,
-                                toPath, copyPath);
+                            Map<String, String> fromPageIds = getContentIds(fromDocument);
 
-                        // come up with a new object ID and group ID for the object
-                        Map<String, String> copyObjectIds = contentItemIdGenerator.getIds();
+                            logger.debug("copying file for site {0} from {1} to {2}, new name is {3}",
+                                    site, fromPath, toPath, copyPath);
 
-                        Map<String, String> copyDependencies = dependencyService.getCopyDependencies(site, fromPath,
-                                fromPath);
-                        copyDependencies = getItemSpecificDependencies(fromDocument, copyDependencies);
-                        logger.debug("Calculated copy dependencies: {0}, {1}", fromPath, copyDependencies);
+                            // come up with a new object ID and group ID for the object
+                            Map<String, String> copyObjectIds = contentItemIdGenerator.getIds();
 
-                        // Duplicate the children
-                        for (String dependencyKey : copyDependencies.keySet()) {
-                            String dependencyPath = copyDependencies.get(dependencyKey);
-                            String copyDepPath = dependencyPath;
+                            Map<String, String> copyDependencies = getCopyDependencies(site, fromPath,
+                                    fromPath);
+                            copyDependencies = getItemSpecificDependencies(site, fromPath, fromDocument,
+                                    copyDependencies);
 
-                            // try a simple substitution
-                            copyDepPath = copyDepPath.replaceAll(
-                                    fromPageIds.get(DmConstants.KEY_PAGE_ID),
-                                    copyObjectIds.get(DmConstants.KEY_PAGE_ID));
+                            logger.debug("Calculated copy dependencies: {0}, {1}", fromPath, copyDependencies);
 
-                            copyDepPath = copyDepPath.replaceAll(
-                                    fromPageIds.get(DmConstants.KEY_PAGE_GROUP_ID),
-                                    copyObjectIds.get(DmConstants.KEY_PAGE_GROUP_ID));
-                            logger.debug("Translated dependency path from {0} to {1}", dependencyPath, copyDepPath);
+                            // Duplicate the children
+                            for (String dependencyKey : copyDependencies.keySet()) {
+                                String dependencyPath = copyDependencies.get(dependencyKey);
+                                String copyDepPath = dependencyPath;
 
-                            copyContent(site, dependencyPath, copyDepPath, processedPaths);
+                                // try a simple substitution
+                                copyDepPath = copyDepPath.replaceAll(
+                                        fromPageIds.get(DmConstants.KEY_PAGE_ID),
+                                        copyObjectIds.get(DmConstants.KEY_PAGE_ID));
+
+                                copyDepPath = copyDepPath.replaceAll(
+                                        fromPageIds.get(DmConstants.KEY_PAGE_GROUP_ID),
+                                        copyObjectIds.get(DmConstants.KEY_PAGE_GROUP_ID));
+
+                                ContentItemTO targetPathItem = getContentItem(site, copyDepPath);
+                                if (targetPathItem != null && targetPathItem.isFolder()) {
+                                    copyDepPath = copyDepPath + FILE_SEPARATOR + FilenameUtils.getName(dependencyKey);
+                                    copyDepPath = copyDepPath.replaceAll(FILE_SEPARATOR + FILE_SEPARATOR,
+                                            FILE_SEPARATOR);
+                                } else if (!copyDepPath.endsWith(DmConstants.XML_PATTERN)) {
+                                    copyDepPath = ContentUtils.getParentUrl(copyDepPath);
+                                }
+                                
+                                logger.debug("Translated dependency path from {0} to {1}",
+                                        dependencyPath, copyDepPath);
+
+                                String newCopyDepthPath = copyContent(site, dependencyKey, copyDepPath, processedPaths);
+                                fromDocument = replaceCopyDependency(fromDocument, dependencyKey, newCopyDepthPath);
+                            }
+
+                            // update the file name / folder values
+                            Document copyDocument = updateContentOnCopy(fromDocument, copyPathFileName, copyPathFolder,
+                                    copyObjectIds, copyPathModifier);
+
+                            copyContent = ContentUtils.convertDocumentToStream(copyDocument, CONTENT_ENCODING);
                         }
-
-                        // update the file name / folder values
-                        Document copyDocument = updateContentOnCopy(fromDocument, copyPathFileName, copyPathFolder,
-                                copyObjectIds, copyPathModifier);
-
-                        copyContent = ContentUtils.convertDocumentToStream(copyDocument, CONTENT_ENCODING);
 
                         // This code is very similar to what is in writeContent. Consolidate this code?
                         Map<String, String> params = new HashMap<String, String>();
@@ -625,41 +804,33 @@ public class ContentServiceImpl implements ContentService {
 
                         String id = site + ":" + copyPathOnly + ":" + copyFileName + ":" + contentType;
 
-                        try {
-                            generalLockService.lock(id);
-
-                            // processContent will close the input stream
-                            if (!StringUtils.isEmpty(contentType)) {
-                                processContent(id, copyContent, true, params, DmConstants.CONTENT_CHAIN_FORM);
-                            } else {
-                                if (copyFileName.endsWith(DmConstants.XML_PATTERN)) {
-                                    processContent(id, copyContent, true, params, DmConstants.CONTENT_CHAIN_FORM);
-                                } else {
-                                    processContent(id, fromContent, false, params, DmConstants.CONTENT_CHAIN_ASSET);
-                                }
-                            }
-
-                            ItemState itemState = objectStateService.getObjectState(site, copyPath);
-
-                            if (itemState == null) {
-                                ContentItemTO copyItem = getContentItem(site, copyPath, 0);
-                                objectStateService.insertNewEntry(site, copyItem);
-                                objectStateService.setSystemProcessing(site, copyPath, false);
-                            }
-
-                            // copy was successful, return the new name
-                            retNewFileName = copyPath;
-
-                            // track that we already copied so we don't follow a circular dependency
-                            processedPaths.add(copyPath);
-
-                        } finally {
-                            generalLockService.unlock(id);
+                        // processContent will close the input stream
+                        if (copyFileName.endsWith(DmConstants.XML_PATTERN)) {
+                            processContent(id, copyContent, true, params, DmConstants.CONTENT_CHAIN_FORM);
+                        } else {
+                            processContent(id, fromContent, false, params, DmConstants.CONTENT_CHAIN_ASSET);
                         }
+
+
+                        ItemState itemState = objectStateService.getObjectState(site, copyPath);
+
+                        if (itemState == null) {
+                            ContentItemTO copyItem = getContentItem(site, copyPath, 0);
+                            objectStateService.insertNewEntry(site, copyItem);
+                            objectStateService.setSystemProcessing(site, copyPath, false);
+                        }
+
+                        // copy was successful, return the new name
+                        retNewFileName = copyPath;
+
+                        // track that we already copied so we don't follow a circular dependency
+                        processedPaths.add(copyPath);
                     } catch (ContentNotFoundException eContentNotFound) {
-                        logger.debug("Content not found while copying content for site {0} from {1} to {2}, new name is {3}", eContentNotFound, site, fromPath, toPath, copyPath);
+                        logger.debug("Content not found while copying content for site {0} from {1} to {2}," +
+                                " new name is {3}", eContentNotFound, site, fromPath, toPath, copyPath);
                     } catch (DocumentException eParseException) {
-                        logger.error("General Error while copying content for site {0} from {1} to {2}, new name is {3}", eParseException, site, fromPath, toPath, copyPath);
+                        logger.error("General Error while copying content for site {0} from {1} to {2}," +
+                                " new name is {3}", eParseException, site, fromPath, toPath, copyPath);
                     } finally {
                         IOUtils.closeQuietly(copyContent);
                     }
@@ -669,22 +840,76 @@ public class ContentServiceImpl implements ContentService {
                 retNewFileName = copyPath;
             }
         }
-        catch(ServiceException eServiceException) {
-            logger.info("General Error while copying content for site {0} from {1} to {2}, new name is {3}", eServiceException, site, fromPath, toPath, copyPath);
+        catch(ServiceLayerException eServiceLayerException) {
+            logger.info("General Error while copying content for site {0} from {1} to {2}, new name is {3}",
+                eServiceLayerException, site, fromPath, toPath, copyPath);
         }
 
         return retNewFileName;
     }
 
+    @SuppressWarnings("unchecked")
+    protected Document replaceCopyDependency(Document document, String depPath, String copyDepPath) {
+        Element root = document.getRootElement();
+        List<Node> includes = root.selectNodes(COPY_DEP_XPATH.replace(COPY_DEP, depPath));
+        if (includes != null) {
+            for(Node includeNode : includes) {
+                includeNode.setText(includeNode.getText().replace(depPath, copyDepPath));
+            }
+        }
+        return document;
+    }
+
+    private Map<String, String> getCopyDependencies(@ValidateStringParam(name = "site") String site,
+                                                    @ValidateSecurePathParam(name = "sourceContentPath")
+                                                            String sourceContentPath,
+                                                    @ValidateSecurePathParam(name = "dependencyPath")
+                                                            String dependencyPath)
+            throws ServiceLayerException {
+        Map<String,String> copyDependency = new HashMap<String,String>();
+        if(sourceContentPath.endsWith(DmConstants.XML_PATTERN) && dependencyPath.endsWith(DmConstants.XML_PATTERN)){
+            ContentItemTO dependencyItem = getContentItem(site, sourceContentPath);
+            if (dependencyItem != null) {
+                String contentType = dependencyItem.getContentType();
+                List<CopyDependencyConfigTO> copyDependencyPatterns =
+                        servicesConfig.getCopyDependencyPatterns(site, contentType);
+                if (copyDependencyPatterns != null && copyDependencyPatterns.size() > 0) {
+                    logger.debug("Copy Pattern provided for contentType" + contentType);
+                    Set<String> dependencies = dependencyService.getItemDependencies(site, dependencyPath, 1);
+                    if (CollectionUtils.isNotEmpty(dependencies)) {
+                        for (String dependency : dependencies) {
+                            for (CopyDependencyConfigTO copyConfig : copyDependencyPatterns) {
+                                if (contentExists(site, dependency) &&
+                                        StringUtils.isNotEmpty(copyConfig.getPattern()) &&
+                                        StringUtils.isNotEmpty(copyConfig.getTarget()) &&
+                                        dependency.matches(copyConfig.getPattern())) {
+                                    copyDependency.put(dependency, copyConfig.getTarget());
+                                }
+                            }
+                        }
+                    }
+                } else {
+                    logger.debug("Copy Pattern is not provided for contentType" + contentType);
+                }
+            } else {
+                logger.debug("Not found dependency item at site {0} path {!}", site, sourceContentPath);
+            }
+        }
+        return copyDependency;
+    }
+
     @Override
     @ValidateParams
-    public String moveContent(@ValidateStringParam(name = "site") String site, @ValidateSecurePathParam(name = "fromPath") String fromPath, @ValidateSecurePathParam(name = "toPath") String toPath) {
+    public String moveContent(@ValidateStringParam(name = "site") String site,
+                              @ValidateSecurePathParam(name = "fromPath") String fromPath,
+                              @ValidateSecurePathParam(name = "toPath") String toPath) {
         String retNewFileName = null;
         boolean opSuccess = false;
         String movePath = null;
 
         try {
-            String sourcePath = (fromPath.indexOf("" + FILE_SEPARATOR + DmConstants.INDEX_FILE) != -1) ? fromPath.substring(0, fromPath.lastIndexOf(FILE_SEPARATOR)) : fromPath;
+            String sourcePath = (fromPath.indexOf("" + FILE_SEPARATOR + DmConstants.INDEX_FILE) != -1) ?
+                    fromPath.substring(0, fromPath.lastIndexOf(FILE_SEPARATOR)) : fromPath;
             String sourcePathOnly = fromPath.substring(0, fromPath.lastIndexOf(FILE_SEPARATOR));
 
             Map<String, String> movePathMap = constructNewPathforCutCopy(site, fromPath, toPath, true);
@@ -704,9 +929,11 @@ public class ContentServiceImpl implements ContentService {
                 targetPath = movePath;
             }
 
-            logger.debug("Move file for site {0} from {1} to {2}, sourcePath {3} to target path {4}", site, fromPath, toPath, sourcePath, targetPath);
+            logger.debug("Move file for site {0} from {1} to {2}, sourcePath {3} to target path {4}", site,
+                    fromPath, toPath, sourcePath, targetPath);
 
-            // NOTE: IN WRITE SCENARIOS the repository OP IS PART of this PIPELINE, for some reason, historically with MOVE it is not
+            // NOTE: IN WRITE SCENARIOS the repository OP IS PART of this PIPELINE, for some reason,
+            // historically with MOVE it is not
             Map<String, String> commitIds = _contentRepository.moveContent(site, sourcePath, targetPath);
 
             if (commitIds != null) {
@@ -728,14 +955,15 @@ public class ContentServiceImpl implements ContentService {
             context.setSite(site);
             eventService.publish(EVENT_PREVIEW_SYNC, context);
         }
-        catch(ServiceException eMoveErr) {
-            logger.error("Content not found while moving content for site {0} from {1} to {2}, new name is {3}", eMoveErr, site, fromPath, toPath, movePath);
+        catch(ServiceLayerException eMoveErr) {
+            logger.error("Content not found while moving content for site {0} from {1} to {2}, new name is {3}",
+                    eMoveErr, site, fromPath, toPath, movePath);
         }
 
         return movePath;
     }
 
-    protected void updateDatabaseOnMove(String site, String fromPath, String movePath) {
+    protected void updateDatabaseOnMove(String site, String fromPath, String movePath) throws SiteNotFoundException {
         logger.debug("updateDatabaseOnMove FROM {0} TO {1}  ", fromPath, movePath);
 
         String user = securityService.getCurrentUser();
@@ -755,7 +983,7 @@ public class ContentServiceImpl implements ContentService {
 
             // change the path of this object in the object state database
             objectStateService.updateObjectPath(site, fromPath, movePath);
-            objectStateService.transition(site, renamedItem, org.craftercms.studio.api.v1.service.objectstate.TransitionEvent.SAVE);
+            objectStateService.transition(site, renamedItem, SAVE);
             renamedItem = getContentItem(site, movePath, 0);
         }
         // update metadata
@@ -764,7 +992,9 @@ public class ContentServiceImpl implements ContentService {
             // ultimately orphan deployed content.  Old Path is always the OLDEST DEPLOYED PATH
             ItemMetadata metadata = objectMetadataManager.getProperties(site, fromPath);
             if (metadata == null && !renamedItem.isFolder()) {
-                objectMetadataManager.insertNewObjectMetadata(site, fromPath);
+                if (!objectMetadataManager.metadataExist(site, fromPath)) {
+                    objectMetadataManager.insertNewObjectMetadata(site, fromPath);
+                }
                 metadata = objectMetadataManager.getProperties(site, fromPath);
             }
 
@@ -779,74 +1009,46 @@ public class ContentServiceImpl implements ContentService {
         }
 
         if (!renamedItem.isFolder()) {
+            if (objectMetadataManager.metadataExist(site, movePath)) {
+                objectMetadataManager.deleteObjectMetadata(site, movePath);
+            }
             objectMetadataManager.updateObjectPath(site, fromPath, movePath);
         }
 
         // write activity stream
-        activityService.renameContentId(site, fromPath, movePath);
-        ActivityService.ActivityType activityType = ActivityService.ActivityType.MOVED;
-        Map<String, String> extraInfo = new HashMap<String, String>();
+        SiteFeed siteFeed = siteService.getSite(site);
+        AuditLog auditLog = auditServiceInternal.createAuditLogEntry();
+        auditLog.setOperation(OPERATION_MOVE);
+        auditLog.setSiteId(siteFeed.getId());
+        auditLog.setActorId(user);
+        auditLog.setPrimaryTargetId(site + ":" + movePath);
         if (renamedItem.isFolder()) {
-            extraInfo.put(DmConstants.KEY_CONTENT_TYPE, CONTENT_TYPE_FOLDER);
+            auditLog.setPrimaryTargetType(TARGET_TYPE_FOLDER);
         } else {
-            extraInfo.put(DmConstants.KEY_CONTENT_TYPE, getContentTypeClass(site, movePath));
+            auditLog.setPrimaryTargetType(TARGET_TYPE_CONTENT_ITEM);
         }
-        activityService.postActivity(site, user, movePath, activityType, ActivityService.ActivitySource.UI, extraInfo);
-
-        Map<String, String> activityInfo = new HashMap<String, String>();
-        String contentClass = getContentTypeClass(site, movePath);
-
-        if(movePath.endsWith(DmConstants.XML_PATTERN)) {
-            activityInfo.put(DmConstants.KEY_CONTENT_TYPE, contentClass);
-        }
+        auditLog.setPrimaryTargetValue(movePath);
+        auditLog.setPrimaryTargetSubtype(getContentTypeClass(site, movePath));
+        auditServiceInternal.insertAuditLog(auditLog);
 
         updateDependenciesOnMove(site, fromPath, movePath);
     }
 
     protected void updateDependenciesOnMove(String site, String fromPath, String movePath) {
-        dependencyService.deleteDependenciesForSiteAndPath(site, fromPath);
-        if (movePath.endsWith(DmConstants.XML_PATTERN)) {
-            try {
-                Document document = getContentAsDocument(site, movePath);
-                Map<String, Set<String>> globalDeps = new HashMap<>();
-                dependencyService.extractDependencies(site, movePath, document, globalDeps);
-            } catch (ServiceException | DocumentException e) {
-                logger.error("Error while updating dependencies on move content site: " + site + " path: " + movePath, e);
-            }
-        } else {
-            boolean isCss = movePath.endsWith(DmConstants.CSS_PATTERN);
-            boolean isJs = movePath.endsWith(DmConstants.JS_PATTERN);
-            List<String> templatePatterns = servicesConfig.getRenderingTemplatePatterns(site);
-            boolean isTemplate = false;
-            for (String templatePattern : templatePatterns) {
-                Pattern pattern = Pattern.compile(templatePattern);
-                Matcher matcher = pattern.matcher(movePath);
-                if (matcher.matches()) {
-                    isTemplate = true;
-                    break;
-                }
-            }
-
-            String content = getContentAsString(site, movePath);
-            if (StringUtils.isNotEmpty(content)) {
-                StringBuffer assetContent = new StringBuffer(content);
-                Map<String, Set<String>> globalDeps = new HashMap<String, Set<String>>();
-                try {
-                    if (isCss) {
-                        dependencyService.extractDependenciesStyle(site, movePath, assetContent, globalDeps);
-                    } else if (isJs) {
-                        dependencyService.extractDependenciesJavascript(site, movePath, assetContent, globalDeps);
-                    } else if (isTemplate) {
-                        dependencyService.extractDependenciesTemplate(site, movePath, assetContent, globalDeps);
-                    }
-                } catch (ServiceException e) {
-                    logger.error("Error while updating dependencies on move content site: " + site + " path: " + movePath, e);
-                }
-            }
+        try {
+            dependencyService.deleteItemDependencies(site, fromPath);
+        } catch (ServiceLayerException e) {
+            logger.error("Error while deleting dependencies for site " + site + " path " + fromPath, e);
+        }
+        try {
+            dependencyService.upsertDependencies(site, movePath);
+        } catch (ServiceLayerException e) {
+            logger.error("Error while updating dependencies on move content site: " + site + " path: "
+                    + movePath, e);
         }
     }
 
-    protected void updateChildrenOnMove(String site, String fromPath, String movePath) {
+    protected void updateChildrenOnMove(String site, String fromPath, String movePath) throws SiteNotFoundException {
         logger.debug("updateChildrenOnMove from {0} to {1}", fromPath, movePath);
 
         // get the list of children
@@ -873,8 +1075,8 @@ public class ContentServiceImpl implements ContentService {
         }
     }
 
-    protected Map<String, String> constructNewPathforCutCopy(String site, String fromPath, String toPath, boolean adjustOnCollide)
-            throws ServiceException {
+    protected Map<String, String> constructNewPathforCutCopy(String site, String fromPath, String toPath,
+                                                             boolean adjustOnCollide) throws ServiceLayerException {
         Map<String, String> result = new HashMap<String, String>();
 
         // The following rules apply to content under the site folder
@@ -889,8 +1091,10 @@ public class ContentServiceImpl implements ContentService {
             logger.debug("Cut/copy name rules index from path: '{0}' name: '{1}'", fromPathOnly, fromFileNameOnly);
         }
 
-        String newPathOnly = (toPath.contains(".xml")) ? toPath.substring(0, toPath.lastIndexOf(FILE_SEPARATOR)) : toPath;
-        String newFileNameOnly = (toPath.contains(".xml")) ? toPath.substring(toPath.lastIndexOf(FILE_SEPARATOR)+1) : fromFileNameOnly;
+        String newPathOnly = (toPath.contains(".xml")) ?
+                toPath.substring(0, toPath.lastIndexOf(FILE_SEPARATOR)) : toPath;
+        String newFileNameOnly = (toPath.contains(".xml")) ?
+                toPath.substring(toPath.lastIndexOf(FILE_SEPARATOR)+1) : fromFileNameOnly;
         boolean newFileIsIndex = ("index.xml".equals(newFileNameOnly));
         logger.debug("Cut/copy name rules to path: '{0}' name: '{1}'", newPathOnly, newFileNameOnly);
 
@@ -919,13 +1123,15 @@ public class ContentServiceImpl implements ContentService {
             // newPath:  "/site/website/en/services-updated/index.xml
             if(newPathOnly.equals(fromPathOnly) && !targetPathExistsPriorToOp) {
                 // this is a rename
-                proposedDestPath = newPathOnly + FILE_SEPARATOR + newFileNameOnly + FILE_SEPARATOR + DmConstants.INDEX_FILE;
+                proposedDestPath = newPathOnly + FILE_SEPARATOR + newFileNameOnly + FILE_SEPARATOR +
+                        DmConstants.INDEX_FILE;
                 proposedDestPath_filename = DmConstants.INDEX_FILE;
                 proposedDestPath_folder = newFileNameOnly;
             }
             else {
                 // this is a location move
-                proposedDestPath = newPathOnly + FILE_SEPARATOR + newFileNameOnly + FILE_SEPARATOR + fromFileNameOnly + FILE_SEPARATOR + DmConstants.INDEX_FILE;
+                proposedDestPath = newPathOnly + FILE_SEPARATOR + newFileNameOnly + FILE_SEPARATOR +
+                        fromFileNameOnly + FILE_SEPARATOR + DmConstants.INDEX_FILE;
                 proposedDestPath_filename = DmConstants.INDEX_FILE;
                 proposedDestPath_folder = fromFileNameOnly;
             }
@@ -935,7 +1141,8 @@ public class ContentServiceImpl implements ContentService {
             // fromPath: "/site/website/search/index.xml"
             // toPath:   "/site/website/a-folder"
             // newPath:  "/site/website/a-folder/search/index.xml"
-            proposedDestPath = newPathOnly + FILE_SEPARATOR + fromFileNameOnly + FILE_SEPARATOR + DmConstants.INDEX_FILE;
+            proposedDestPath = newPathOnly + FILE_SEPARATOR + fromFileNameOnly + FILE_SEPARATOR +
+                    DmConstants.INDEX_FILE;
             proposedDestPath_filename = DmConstants.INDEX_FILE;
             proposedDestPath_folder = fromFileNameOnly;
         }
@@ -956,7 +1163,12 @@ public class ContentServiceImpl implements ContentService {
             // newPath:  "/site/website/products/search.xml"
             if(fromFileNameOnly.equals(newFileNameOnly)) {
                 // Move location
-                proposedDestPath = newPathOnly + FILE_SEPARATOR + fromFileNameOnly;
+                if (!_contentRepository.contentExists(site, newPathOnly) ||
+                        _contentRepository.isFolder(site, newPathOnly)) {
+                    proposedDestPath = newPathOnly + FILE_SEPARATOR + fromFileNameOnly;
+                } else {
+                    proposedDestPath = newPathOnly;
+                }
                 proposedDestPath_filename = fromFileNameOnly;
                 proposedDestPath_folder = newPathOnly.substring(0, newPathOnly.lastIndexOf(FILE_SEPARATOR));
             }
@@ -998,18 +1210,25 @@ public class ContentServiceImpl implements ContentService {
                                     proposedDestPath.substring(pdpli);
 
                     // a regex would be better
-                    proposedDestPath_filename = proposedDestPath.substring(proposedDestPath.lastIndexOf(FILE_SEPARATOR)+1);
-                    proposedDestPath_folder = proposedDestPath.substring(0, proposedDestPath.lastIndexOf(FILE_SEPARATOR));
-                    proposedDestPath_folder = proposedDestPath_folder.substring(proposedDestPath_folder.lastIndexOf(FILE_SEPARATOR)+1);
+                    proposedDestPath_filename =
+                            proposedDestPath.substring(proposedDestPath.lastIndexOf(FILE_SEPARATOR)+1);
+                    proposedDestPath_folder =
+                            proposedDestPath.substring(0, proposedDestPath.lastIndexOf(FILE_SEPARATOR));
+                    proposedDestPath_folder =
+                            proposedDestPath_folder.substring(proposedDestPath_folder.lastIndexOf(FILE_SEPARATOR)+1);
                 }
                 else {
                     proposedDestPath =
-                            proposedDestPath.substring(0, proposedDestPath.indexOf(FILE_SEPARATOR + DmConstants.INDEX_FILE)) + "-" + id +
-                                    proposedDestPath.substring(proposedDestPath.lastIndexOf(FILE_SEPARATOR + DmConstants.INDEX_FILE));
+                            proposedDestPath.substring(0,
+                                    proposedDestPath.indexOf(FILE_SEPARATOR + DmConstants.INDEX_FILE)) + "-" + id +
+                                    proposedDestPath.substring(
+                                            proposedDestPath.lastIndexOf(FILE_SEPARATOR + DmConstants.INDEX_FILE));
 
                     proposedDestPath_filename = DmConstants.INDEX_FILE;
-                    proposedDestPath_folder = proposedDestPath.replace(FILE_SEPARATOR + DmConstants.INDEX_FILE,"");
-                    proposedDestPath_folder = proposedDestPath_folder.substring(proposedDestPath_folder.lastIndexOf(FILE_SEPARATOR)+1);
+                    proposedDestPath_folder =
+                            proposedDestPath.replace(FILE_SEPARATOR + DmConstants.INDEX_FILE,"");
+                    proposedDestPath_folder =
+                            proposedDestPath_folder.substring(proposedDestPath_folder.lastIndexOf(FILE_SEPARATOR)+1);
                 }
 
                 result.put("FILE_PATH", proposedDestPath);
@@ -1019,7 +1238,8 @@ public class ContentServiceImpl implements ContentService {
                 result.put("ALT_NAME", "true");
             }
             catch(Exception altPathGenErr) {
-                throw new ServiceException("Unable to generate an alternative path for name collision: " + proposedDestPath, altPathGenErr);
+                throw new ServiceLayerException("Unable to generate an alternative path for name collision: " +
+                        proposedDestPath, altPathGenErr);
             }
         }
 
@@ -1029,8 +1249,14 @@ public class ContentServiceImpl implements ContentService {
     }
 
     @SuppressWarnings("unchecked")
-    protected Map<String, String> getItemSpecificDependencies(Document document, Map<String, String> copyDependencies) {
-        // TODO: RD: This should move to the dependency service to be fully computed there
+    protected Map<String, String> getItemSpecificDependencies(String site, String path, Document document,
+                                                              Map<String, String> copyDependencies)
+            throws ServiceLayerException {
+        Set<String> deps = dependencyService.getItemSpecificDependencies(site, path, 1);
+        for (String dep : deps) {
+            copyDependencies.put(dep, dep);
+        }
+
         //update pageId and groupId with the new one
         Element root = document.getRootElement();
 
@@ -1064,25 +1290,25 @@ public class ContentServiceImpl implements ContentService {
      */
     protected Map<String, String> getContentIds(Document document) {
         Map<String, String> ids = new HashMap<String, String>();
+        if (document != null) {
+            Element root = document.getRootElement();
+            Node pageIdNode = root.selectSingleNode("//" + DmXmlConstants.ELM_PAGE_ID);
+            if (pageIdNode != null) {
+                ids.put(DmConstants.KEY_PAGE_ID, ((Element) pageIdNode).getText());
+            }
 
-        Element root = document.getRootElement();
-        Node pageIdNode = root.selectSingleNode("//" + DmXmlConstants.ELM_PAGE_ID);
-        if (pageIdNode != null) {
-            ids.put(DmConstants.KEY_PAGE_ID, ((Element)pageIdNode).getText());
+            Node groupIdNode = root.selectSingleNode("//" + DmXmlConstants.ELM_GROUP_ID);
+            if (groupIdNode != null) {
+                ids.put(DmConstants.KEY_PAGE_GROUP_ID, ((Element) groupIdNode).getText());
+            }
         }
-
-        Node groupIdNode = root.selectSingleNode("//" + DmXmlConstants.ELM_GROUP_ID);
-        if (groupIdNode != null) {
-            ids.put(DmConstants.KEY_PAGE_GROUP_ID, ((Element)groupIdNode).getText());
-        }
-
         return ids;
     }
 
     @SuppressWarnings("unchecked")
     protected Document updateContentOnCopy(Document document, String filename, String folder, Map<String,
         String> params, String modifier)
-            throws ServiceException {
+            throws ServiceLayerException {
 
         //update pageId and groupId with the new one
         Element root = document.getRootElement();
@@ -1152,7 +1378,8 @@ public class ContentServiceImpl implements ContentService {
 
     protected ContentItemTO createNewContentItemTO(String site, String contentPath) {
         ContentItemTO item = new ContentItemTO();
-        contentPath = FilenameUtils.normalize(contentPath, true);   // FIXME: SJ: This is another workaround for UI issues
+        // FIXME: SJ: This is another workaround for UI issues
+        contentPath = FilenameUtils.normalize(contentPath, true);
 
         item.uri = contentPath;
         item.path = contentPath.substring(0, contentPath.lastIndexOf(FILE_SEPARATOR));
@@ -1183,7 +1410,8 @@ public class ContentServiceImpl implements ContentService {
         item.submittedForDeletion = false;
         item.inProgress = true;
         item.live = false;
-        item.folder = (item.name.contains(".")==false); // TODO: SJ: This seems hokey, fix in 3.1+
+        // TODO: DB: Review again in 3.1+
+        item.folder = _contentRepository.isFolder(site, contentPath);
 
         return item;
     }
@@ -1203,7 +1431,8 @@ public class ContentServiceImpl implements ContentService {
         item.isPage = item.page;
         item.previewable = item.page;               // TODO: SJ: This and item below are duplicated due to UI issues
         item.isPreviewable = item.previewable;      // TODO: SJ: Fix this in 3.1+
-        item.component = ContentUtils.matchesPatterns(item.getUri(), servicesConfig.getComponentPatterns(site)) || item.isLevelDescriptor();
+        item.component = ContentUtils.matchesPatterns(item.getUri(), servicesConfig.getComponentPatterns(site)) ||
+                item.isLevelDescriptor();
         item.isComponent = item.component;
         item.asset = ContentUtils.matchesPatterns(item.getUri(), servicesConfig.getAssetPatterns(site));
         item.isAsset = item.asset;
@@ -1211,13 +1440,17 @@ public class ContentServiceImpl implements ContentService {
         item.isDocument = item.document;
 
         item.uri = contentPath;
-        item.path = contentPath.substring(0, contentPath.lastIndexOf(FILE_SEPARATOR)); // TODO: SJ: This is hokey, fix in 3.1+
-        item.name = contentPath.substring(contentPath.lastIndexOf(FILE_SEPARATOR) + 1);// TODO: SJ: This is hokey, fix in 3.1+
+        // TODO: SJ: This is hokey, fix in 3.1+
+        item.path = contentPath.substring(0, contentPath.lastIndexOf(FILE_SEPARATOR));
+        // TODO: SJ: This is hokey, fix in 3.1+
+        item.name = contentPath.substring(contentPath.lastIndexOf(FILE_SEPARATOR) + 1);
         item.browserUri = contentPath;
 
         if(item.page) {
             // TODO: SJ: This is hokey, fix in 4.x
-            item.browserUri = contentPath.replace(FILE_SEPARATOR + "site" + FILE_SEPARATOR + "website", "").replace(FILE_SEPARATOR + DmConstants.INDEX_FILE, "");
+            item.browserUri =
+                    contentPath.replace(FILE_SEPARATOR + "site" + FILE_SEPARATOR + "website", "")
+                            .replace(FILE_SEPARATOR + DmConstants.INDEX_FILE, "");
         }
 
         Document contentDoc = this.getContentAsDocument(site, contentPath);
@@ -1347,8 +1580,11 @@ public class ContentServiceImpl implements ContentService {
                     else {
                         if (depth > 1) {
                             String childPath = childRepoItems[j].path + FILE_SEPARATOR + childRepoItems[j].name;
-                            if (childPath.startsWith(FILE_SEPARATOR + "site" + FILE_SEPARATOR + "website" + FILE_SEPARATOR) && childRepoItems[j].isFolder && contentExists(item.site, childPath + FILE_SEPARATOR + DmConstants.INDEX_FILE )) {
-                                children.add(getContentItem(item.site, childPath + FILE_SEPARATOR + DmConstants.INDEX_FILE, depth - 1));
+                            if (childPath.startsWith(FILE_SEPARATOR + "site" + FILE_SEPARATOR + "website" +
+                                    FILE_SEPARATOR) && childRepoItems[j].isFolder &&
+                                    contentExists(item.site,childPath + FILE_SEPARATOR + DmConstants.INDEX_FILE )) {
+                                children.add(getContentItem(item.site, childPath + FILE_SEPARATOR +
+                                        DmConstants.INDEX_FILE, depth - 1));
                             } else {
                                 children.add(getContentItem(item.site, childPath, depth - 1));
                             }
@@ -1356,7 +1592,7 @@ public class ContentServiceImpl implements ContentService {
                     }
                 }
 
-                if(!indexFound) {
+                if(!indexFound && _contentRepository.isFolder(item.site, contentPath)) {
                     // ITEM IS A FOLDER
                     item.folder = true;
                     item.isContainer = true;
@@ -1377,7 +1613,8 @@ public class ContentServiceImpl implements ContentService {
                 // level descriptors first
                 // nav pages by order
                 // floating pages via Alpha
-                Comparator<ContentItemTO> comparator = new ContentItemOrderComparator("default", true, true, true);
+                Comparator<ContentItemTO> comparator =
+                        new ContentItemOrderComparator("default", true, true, true);
                 Collections.sort(children, comparator);
                 item.children = children;
 
@@ -1400,13 +1637,16 @@ public class ContentServiceImpl implements ContentService {
 
     @Override
     @ValidateParams
-    public ContentItemTO getContentItem(@ValidateStringParam(name = "site") String site, @ValidateSecurePathParam(name = "path") String path) {
+    public ContentItemTO getContentItem(@ValidateStringParam(name = "site") String site,
+                                        @ValidateSecurePathParam(name = "path") String path) {
         return getContentItem(site, path, 2);
     }
 
     @Override
     @ValidateParams
-    public ContentItemTO getContentItem(@ValidateStringParam(name = "site") String site, @ValidateSecurePathParam(name = "path") String path, @ValidateIntegerParam(name = "depth") int depth) {
+    public ContentItemTO getContentItem(@ValidateStringParam(name = "site") String site,
+                                        @ValidateSecurePathParam(name = "path") String path,
+                                        @ValidateIntegerParam(name = "depth") int depth) {
         ContentItemTO item = null;
         logger.debug("Getting content item for site '{}' path '{}' depth '{}'", site, path, depth);
 
@@ -1441,7 +1681,8 @@ public class ContentServiceImpl implements ContentService {
         }
 
         long executionTime = System.currentTimeMillis() - startTime;
-        logger.debug("Content item from site '{}' path '{}' retrieved in '{}' milli-seconds", site, path, executionTime);
+        logger.debug("Content item from site '{}' path '{}' retrieved in '{}' milli-seconds",
+                site, path, executionTime);
         return item;
     }
 
@@ -1462,9 +1703,12 @@ public class ContentServiceImpl implements ContentService {
             item.isPage = item.page;
             item.previewable = item.page;
             item.isPreviewable = item.previewable;
-            item.asset = ContentUtils.matchesPatterns(item.getUri(), servicesConfig.getAssetPatterns(site)) || ContentUtils.matchesPatterns(item.getUri(), servicesConfig.getRenderingTemplatePatterns(site)) || ContentUtils.matchesPatterns(item.getUri(), servicesConfig.getScriptsPatterns(site));;
+            item.asset = ContentUtils.matchesPatterns(item.getUri(), servicesConfig.getAssetPatterns(site)) ||
+                    ContentUtils.matchesPatterns(item.getUri(), servicesConfig.getRenderingTemplatePatterns(site)) ||
+                    ContentUtils.matchesPatterns(item.getUri(), servicesConfig.getScriptsPatterns(site));
             item.isAsset = item.asset;
-            item.component = ContentUtils.matchesPatterns(item.getUri(), servicesConfig.getComponentPatterns(site)) || item.isLevelDescriptor() || item.asset;
+            item.component = ContentUtils.matchesPatterns(item.getUri(), servicesConfig.getComponentPatterns(site)) ||
+                    item.isLevelDescriptor() || item.asset;
             item.isComponent = item.component;
             item.document = ContentUtils.matchesPatterns(item.getUri(), servicesConfig.getDocumentPatterns(site));
             item.isDocument = item.document;
@@ -1484,21 +1728,26 @@ public class ContentServiceImpl implements ContentService {
 
     protected void loadContentTypeProperties(String site, ContentItemTO item, String contentType) {
         // TODO: SJ: Refactor in 2.7.x
-        if(contentType != null && !contentType.equals("folder") && !contentType.equals("asset") && !contentType.equals(CONTENT_TYPE_UNKNOWN)) {
-            ContentTypeConfigTO config = servicesConfig.getContentTypeConfig(site, contentType);
-            if (config != null) {
-                item.setForm(config.getForm());
-                item.setFormPagePath(config.getFormPath());
-                item.setPreviewable(config.isPreviewable());
-                item.isPreviewable = item.previewable;
-            }
+        if (item.isFolder()) {
+            item.setContentType(CONTENT_TYPE_FOLDER);
         } else {
-            MimetypesFileTypeMap mimeTypesMap = new MimetypesFileTypeMap();
-            String mimeType = mimeTypesMap.getContentType(item.getName());
-            if (mimeType != null && !StringUtils.isEmpty(mimeType)) {
-                item.setPreviewable(ContentUtils.matchesPatterns(mimeType, servicesConfig
-                        .getPreviewableMimetypesPaterns(site)));
-                item.isPreviewable = item.previewable;
+            if (contentType != null && !contentType.equals(CONTENT_TYPE_FOLDER) && !contentType.equals("asset") &&
+                    !contentType.equals(CONTENT_TYPE_UNKNOWN)) {
+                ContentTypeConfigTO config = servicesConfig.getContentTypeConfig(site, contentType);
+                if (config != null) {
+                    item.setForm(config.getForm());
+                    item.setFormPagePath(config.getFormPath());
+                    item.setPreviewable(config.isPreviewable());
+                    item.isPreviewable = item.previewable;
+                }
+            } else {
+                MimetypesFileTypeMap mimeTypesMap = new MimetypesFileTypeMap();
+                String mimeType = mimeTypesMap.getContentType(item.getName());
+                if (mimeType != null && !StringUtils.isEmpty(mimeType)) {
+                    item.setPreviewable(ContentUtils.matchesPatterns(mimeType, servicesConfig
+                            .getPreviewableMimetypesPaterns(site)));
+                    item.isPreviewable = item.previewable;
+                }
             }
         }
         // TODO CodeRev:but what if the config is null?
@@ -1512,16 +1761,16 @@ public class ContentServiceImpl implements ContentService {
                 item.setNew(!liveFolder);
                 item.setLive(liveFolder);
             } else {
-                item.setNew(org.craftercms.studio.api.v1.service.objectstate.State.isNew(org.craftercms.studio.api.v1.service.objectstate.State.valueOf(state.getState())));
-                item.setLive(org.craftercms.studio.api.v1.service.objectstate.State.isLive(org.craftercms.studio.api.v1.service.objectstate.State.valueOf(state.getState())));
+                item.setNew(State.isNew(State.valueOf(state.getState())));
+                item.setLive(State.isLive(State.valueOf(state.getState())));
             }
             item.isNew = item.isNew();
             item.isLive = item.isLive();
             item.setInProgress(!item.isLive());
             item.isInProgress = item.isInProgress();
-            item.setScheduled(org.craftercms.studio.api.v1.service.objectstate.State.isScheduled(org.craftercms.studio.api.v1.service.objectstate.State.valueOf(state.getState())));
+            item.setScheduled(State.isScheduled(State.valueOf(state.getState())));
             item.isScheduled = item.isScheduled();
-            item.setSubmitted(org.craftercms.studio.api.v1.service.objectstate.State.isSubmitted(org.craftercms.studio.api.v1.service.objectstate.State.valueOf(state.getState())));
+            item.setSubmitted(State.isSubmitted(State.valueOf(state.getState())));
             item.isSubmitted = item.isSubmitted();
             item.setInFlight(state.getSystemProcessing() == 1);
             item.isInFlight = item.isInFlight();
@@ -1594,6 +1843,9 @@ public class ContentServiceImpl implements ContentService {
             if (StringUtils.isNotEmpty(metadata.getSubmissionComment())) {
                 item.setSubmissionComment(metadata.getSubmissionComment());
             }
+            if (StringUtils.isNotEmpty(metadata.getSubmittedToEnvironment())) {
+                item.setSubmittedToEnvironment(metadata.getSubmittedToEnvironment());
+            }
         } else {
             item.setLockOwner("");
         }
@@ -1601,7 +1853,9 @@ public class ContentServiceImpl implements ContentService {
 
     @Override
     @ValidateParams
-    public ContentItemTO getContentItemTree(@ValidateStringParam(name = "site") String site, @ValidateSecurePathParam(name = "path") String path, @ValidateIntegerParam(name = "depth") int depth) {
+    public ContentItemTO getContentItemTree(@ValidateStringParam(name = "site") String site,
+                                            @ValidateSecurePathParam(name = "path") String path,
+                                            @ValidateIntegerParam(name = "depth") int depth) {
         logger.debug("Getting content item  tree for '{}':'{}' depth '{}'", site, path, depth);
         DebugUtils.addDebugStack(logger);
 
@@ -1633,22 +1887,45 @@ public class ContentServiceImpl implements ContentService {
 
     @Override
     @ValidateParams
-    public VersionTO[] getContentItemVersionHistory(@ValidateStringParam(name = "site") String site, @ValidateSecurePathParam(name = "path") String path) {
+    public VersionTO[] getContentItemVersionHistory(@ValidateStringParam(name = "site") String site,
+                                                    @ValidateSecurePathParam(name = "path") String path) {
         // TODO: SJ: Switch this to return a collection and rely on Groovy to change it up for the UI
         return _contentRepository.getContentVersionHistory(site, path);
     }
 
     @Override
     @ValidateParams
-    public boolean revertContentItem(@ValidateStringParam(name = "site") String site, @ValidateSecurePathParam(name = "path") String path, @ValidateStringParam(name = "version") String version, boolean major, @ValidateStringParam(name = "comment") String comment) {
+    public boolean revertContentItem(@ValidateStringParam(name = "site") String site,
+                                     @ValidateSecurePathParam(name = "path") String path,
+                                     @ValidateStringParam(name = "version") String version, boolean major,
+                                     @ValidateStringParam(name = "comment") String comment) throws SiteNotFoundException {
         boolean toReturn = false;
         String commitId = _contentRepository.revertContent(site, path, version, major, comment);
 
         if (commitId != null) {
+            try {
+                dependencyService.upsertDependencies(site, path);
+            } catch (ServiceLayerException e) {
+                logger.error("Error while extracting dependencies for reverted content. Site: " + site + " path: " +
+                        path + " version: " + version);
+            }
             // Update the database with the commitId for the target item
+            objectStateService.transition(site, path, REVERT);
             objectMetadataManager.updateCommitId(site, path, commitId);
             _contentRepository.insertGitLog(site, commitId, 1);
             siteService.updateLastCommitId(site, commitId);
+
+            SiteFeed siteFeed = siteService.getSite(site);
+            AuditLog auditLog = auditServiceInternal.createAuditLogEntry();
+            auditLog.setOperation(OPERATION_REVERT);
+            auditLog.setSiteId(siteFeed.getId());
+            auditLog.setActorId(securityService.getCurrentUser());
+            auditLog.setPrimaryTargetId(site + ":" + path);
+            auditLog.setPrimaryTargetType(TARGET_TYPE_CONTENT_ITEM);
+            auditLog.setPrimaryTargetValue(path);
+            auditLog.setPrimaryTargetSubtype(getContentTypeClass(site, path));
+            auditServiceInternal.insertAuditLog(auditLog);
+
             toReturn = true;
         }
 
@@ -1663,14 +1940,18 @@ public class ContentServiceImpl implements ContentService {
 
     @Override
     @ValidateParams
-    public InputStream getContentVersion(@ValidateStringParam(name = "site") String site, @ValidateSecurePathParam(name = "path") String path, @ValidateStringParam(name = "version") String version)
+    public InputStream getContentVersion(@ValidateStringParam(name = "site") String site,
+                                         @ValidateSecurePathParam(name = "path") String path,
+                                         @ValidateStringParam(name = "version") String version)
             throws ContentNotFoundException {
         return _contentRepository.getContentVersion(site, path, version);
     }
 
     @Override
     @ValidateParams
-    public String getContentVersionAsString(@ValidateStringParam(name = "site") String site, @ValidateSecurePathParam(name = "path") String path, @ValidateStringParam(name = "version") String version)
+    public String getContentVersionAsString(@ValidateStringParam(name = "site") String site,
+                                            @ValidateSecurePathParam(name = "path") String path,
+                                            @ValidateStringParam(name = "version") String version)
             throws ContentNotFoundException {
         String content = null;
 
@@ -1686,14 +1967,17 @@ public class ContentServiceImpl implements ContentService {
 
     @Override
     @ValidateParams
-    public ContentItemTO createDummyDmContentItemForDeletedNode(@ValidateStringParam(name = "site") String site, @ValidateSecurePathParam(name = "relativePath") String relativePath) {
+    public ContentItemTO createDummyDmContentItemForDeletedNode(@ValidateStringParam(name = "site") String site,
+                                                                @ValidateSecurePathParam(name = "relativePath")
+                                                                        String relativePath) {
         // TODO: SJ: Think of another way to do this in 3.1+
 
         ContentItemTO item = new ContentItemTO();
         String timeZone = servicesConfig.getDefaultTimezone(site);
         item.timezone = timeZone;
         String name = ContentUtils.getPageName(relativePath);
-        String folderPath = (name.equals(DmConstants.INDEX_FILE)) ? relativePath.replace(FILE_SEPARATOR + name, "") : relativePath;
+        String folderPath = (name.equals(DmConstants.INDEX_FILE)) ?
+                relativePath.replace(FILE_SEPARATOR + name, "") : relativePath;
         item.path = folderPath;
         /**
          * Internal name should be just folder name
@@ -1768,7 +2052,8 @@ public class ContentServiceImpl implements ContentService {
         // TODO: SJ: This reads: if can't guess what it is, it's a page. This is to be replaced in 3.1+
         if (matchesPatterns(uri, servicesConfig.getPagePatterns(site))) {
             return CONTENT_TYPE_PAGE;
-        } else if (matchesPatterns(uri, servicesConfig.getComponentPatterns(site)) || uri.endsWith(FILE_SEPARATOR + servicesConfig.getLevelDescriptorName(site))) {
+        } else if (matchesPatterns(uri, servicesConfig.getComponentPatterns(site)) ||
+                uri.endsWith(FILE_SEPARATOR + servicesConfig.getLevelDescriptorName(site))) {
             return CONTENT_TYPE_COMPONENT;
         } else if (matchesPatterns(uri, servicesConfig.getDocumentPatterns(site))) {
             return CONTENT_TYPE_DOCUMENT;
@@ -1776,7 +2061,14 @@ public class ContentServiceImpl implements ContentService {
             return CONTENT_TYPE_ASSET;
         } else if (matchesPatterns(uri, servicesConfig.getRenderingTemplatePatterns(site))) {
             return CONTENT_TYPE_RENDERING_TEMPLATE;
+        } else if (StringUtils.startsWith(uri, contentTypeService.getConfigPath())) {
+            return CONTENT_TYPE_CONTENT_TYPE;
+        } else if (matchesPatterns(uri, Arrays.asList(CONTENT_TYPE_TAXONOMY_REGEX))) {
+            return CONTENT_TYPE_TAXONOMY;
+        } else if (matchesPatterns(uri, servicesConfig.getScriptsPatterns(site))) {
+            return CONTENT_TYPE_SCRIPT;
         }
+
         return CONTENT_TYPE_UNKNOWN;
     }
 
@@ -1793,7 +2085,10 @@ public class ContentServiceImpl implements ContentService {
 
     @Override
     @ValidateParams
-    public ResultTO processContent(@ValidateStringParam(name = "id") String id, InputStream input, boolean isXml, Map<String, String> params, @ValidateStringParam(name = "contentChainForm") String contentChainForm) throws ServiceException {
+    public ResultTO processContent(@ValidateStringParam(name = "id") String id, InputStream input, boolean isXml,
+                                   Map<String, String> params,
+                                   @ValidateStringParam(name = "contentChainForm") String contentChainForm)
+            throws ServiceLayerException {
         // TODO: SJ: Pipeline Processor is not defined right, we need to refactor in 3.1+
         // TODO: SJ: Pipeline should take input, and give you back output
         // TODO: SJ: Presently, this takes action and performs the action as a side effect of the processor chain
@@ -1816,7 +2111,8 @@ public class ContentServiceImpl implements ContentService {
 
     @Override
     @ValidateParams
-    public String getNextAvailableName(@ValidateStringParam(name = "site") String site, @ValidateSecurePathParam(name = "path") String path) {
+    public String getNextAvailableName(@ValidateStringParam(name = "site") String site,
+                                       @ValidateSecurePathParam(name = "path") String path) {
         // TODO: SJ: Refactor to be faster, and make it work regardless (seems to fail above 10) in 3.1+
         String[] levels = path.split(FILE_SEPARATOR);
         int length = levels.length;
@@ -1829,7 +2125,8 @@ public class ContentServiceImpl implements ContentService {
                 if (parentItem != null) {
                     int lastIndex = name.lastIndexOf(".");
                     String ext = (item.isFolder()) ? "" : name.substring(lastIndex);
-                    String originalName = (item.isFolder() || item.isContainer()) ? name : name.substring(0, lastIndex);
+                    String originalName = (item.isFolder() ||
+                            item.isContainer()) ? name : name.substring(0, lastIndex);
                     List<ContentItemTO> children = parentItem.getChildren();
                     // pattern matching doesn't work here
                     // String childNamePattern = originalName + "%" + ext;
@@ -1838,13 +2135,15 @@ public class ContentServiceImpl implements ContentService {
                     if (children != null && children.size() > 0) {
                         // since it is already sorted, we only care about the last matching item
                         for (ContentItemTO child : children) {
-                            if (((item.isFolder() || item.isContainer()) == (child.isFolder() || child.isContainer()))) {
+                            if (((item.isFolder() || item.isContainer()) == (child.isFolder() ||
+                                    child.isContainer()))) {
                                 String childName = child.getName();
                                 if ((child.isFolder() || child.isContainer())) {
                                     childName = ContentUtils.getPageName(child.getBrowserUri());
                                 }
                                 if (childName.matches(namePattern)) {
-                                    Pattern pattern = (item.isFolder() || item.isContainer()) ? COPY_FOLDER_PATTERN : COPY_FILE_PATTERN;
+                                    Pattern pattern = (item.isFolder() ||
+                                            item.isContainer()) ? COPY_FOLDER_PATTERN : COPY_FILE_PATTERN;
                                     Matcher matcher = pattern.matcher(childName);
                                     if (matcher.matches()) {
                                         int helper = ContentFormatUtils.getIntValue(matcher.group(2));
@@ -1870,7 +2169,9 @@ public class ContentServiceImpl implements ContentService {
 
     @Override
     @ValidateParams
-    public GoLiveDeleteCandidates getDeleteCandidates(@ValidateStringParam(name = "site") String site, @ValidateSecurePathParam(name = "relativePath") String relativePath) throws ServiceException {
+    public GoLiveDeleteCandidates getDeleteCandidates(@ValidateStringParam(name = "site") String site,
+                                                      @ValidateSecurePathParam(name = "relativePath")
+                                                              String relativePath) throws ServiceLayerException {
         ContentItemTO contentItem = getContentItem(site, relativePath);
         GoLiveDeleteCandidates deletedItems = new GoLiveDeleteCandidates(site, this, objectStateService);
         if (contentItem != null) {
@@ -1883,7 +2184,8 @@ public class ContentServiceImpl implements ContentService {
     /**
      * Iterate over all paths inside the folder
      */
-    protected void childDeleteItems(String site, ContentItemTO contentItem, GoLiveDeleteCandidates items) throws ServiceException {
+    protected void childDeleteItems(String site, ContentItemTO contentItem, GoLiveDeleteCandidates items)
+            throws ServiceLayerException {
         // TODO: SJ: Reconsider to be iterative instead of recursive in 3.1+
         // TODO: SJ: Reconsider having bulk operations in the underlying repository to speed things up and result
         // TODO: SJ: in less database writes and repo commits
@@ -1903,18 +2205,14 @@ public class ContentServiceImpl implements ContentService {
         items.getPaths().add(contentItem.getUri());
     }
 
-    protected void addDependenciesToDelete(String site, String sourceContentPath, String dependencyPath, GoLiveDeleteCandidates candidates) throws ServiceException {
+    protected void addDependenciesToDelete(String site, String sourceContentPath, String dependencyPath,
+                                           GoLiveDeleteCandidates candidates) throws ServiceLayerException {
         Set<String> dependencyParentFolder = new HashSet<String>();
         //add dependencies as well
-        Set<DmDependencyTO> dmDependencyTOs = dependencyService.getDeleteDependencies(site, sourceContentPath, dependencyPath);
-        for (DmDependencyTO dependency : dmDependencyTOs) {
-            if (candidates.addDependency(dependency.getUri())) {
-                logger.debug("Added to delete" + dependency.getUri());
-                if (dependency.isDeleteEmptyParentFolder()) {
-                    dependencyParentFolder.add(ContentUtils.getParentUrl(dependency.getUri()));
-                }
-            }
-            addDependenciesToDelete(site, sourceContentPath, dependency.getUri(), candidates); //recursively add dependencies of the dependency
+        Set<String> dependencies = dependencyService.getDeleteDependencies(site, sourceContentPath);
+        for (String dependency : dependencies) {
+            candidates.addDependency(dependency);
+            logger.debug("Added to delete" + dependency);
         }
 
         //Find if any folder would get empty if remove the items and add just the folder
@@ -1931,10 +2229,12 @@ public class ContentServiceImpl implements ContentService {
         }
     }
 
-    protected void addRemovedDependenicesToDelete(String site, String relativePath, GoLiveDeleteCandidates candidates) throws ServiceException {
+    protected void addRemovedDependenicesToDelete(String site, String relativePath, GoLiveDeleteCandidates candidates)
+            throws ServiceLayerException {
         if (relativePath.endsWith(DmConstants.XML_PATTERN) && !objectStateService.isNew(site, relativePath)) {
-            DependencyDiffService.DiffRequest diffRequest = new DependencyDiffService.DiffRequest(site, relativePath, null, null, site, true);
-            List<String> deleted = dependencyService.getRemovedDependenices(diffRequest, true);
+            DependencyDiffService.DiffRequest diffRequest = new DependencyDiffService.DiffRequest(site, relativePath,
+                    null, null, site, true);
+            List<String> deleted = getRemovedDependenices(diffRequest, true);
             logger.debug("Removed dependenices for path[" + relativePath + "] : " + deleted);
             for (String dependency : deleted) {
                 candidates.getLiveDependencyItems().add(dependency);
@@ -1942,9 +2242,53 @@ public class ContentServiceImpl implements ContentService {
         }
     }
 
+    protected List<String> getRemovedDependenices(DependencyDiffService.DiffRequest diffRequest,
+                                                  boolean matchDeletePattern) throws ServiceLayerException {
+        DependencyDiffService.DiffResponse diffResponse = dependencyDiffService.diff(diffRequest);
+        List<String> removedDep = diffResponse.getRemovedDependencies();
+        if(matchDeletePattern){
+            removedDep = filterDependenicesMatchingDeletePattern(diffRequest.getSite(), diffRequest.getSourcePath(),
+                    diffResponse.getRemovedDependencies());
+        }
+        return removedDep;
+    }
+
+    protected List<String> filterDependenicesMatchingDeletePattern(String site, String sourcePath,
+                                                                   List<String> dependencies) throws ServiceLayerException {
+        List<String> matchingDep = new ArrayList<String>();
+        if(sourcePath.endsWith(DmConstants.XML_PATTERN) && sourcePath.endsWith(DmConstants.XML_PATTERN)){
+            List<DeleteDependencyConfigTO> deleteAssociations = getDeletePatternConfig(site,sourcePath);
+            if (deleteAssociations != null && deleteAssociations.size() > 0) {
+                for(String dependency:dependencies){
+                    for (DeleteDependencyConfigTO deleteAssoc : deleteAssociations) {
+                        if (dependency.matches(deleteAssoc.getPattern())) {
+                            matchingDep.add(dependency);
+                        }
+                    }
+                }
+            }
+        }
+        return matchingDep;
+    }
+
+    protected List<DeleteDependencyConfigTO> getDeletePatternConfig(String site, String relativePath,
+                                                                    boolean isInLiveRepo) throws ServiceLayerException {
+        List<DeleteDependencyConfigTO> deleteAssociations  = new ArrayList<DeleteDependencyConfigTO>();
+        ContentItemTO dependencyItem = getContentItem(site, relativePath, 0);
+        String contentType = dependencyItem.getContentType();
+        deleteAssociations  = servicesConfig.getDeleteDependencyPatterns(site, contentType);
+        return deleteAssociations;
+    }
+
+    protected List<DeleteDependencyConfigTO> getDeletePatternConfig(String site, String relativePath)
+            throws ServiceLayerException {
+        return getDeletePatternConfig(site,relativePath,false);
+    }
+
     @Override
     @ValidateParams
-    public void lockContent(@ValidateStringParam(name = "site") String site, @ValidateSecurePathParam(name = "path") String path) {
+    public void lockContent(@ValidateStringParam(name = "site") String site,
+                            @ValidateSecurePathParam(name = "path") String path) {
         // TODO: SJ: Where is the object state update to indicate item is now locked?
         // TODO: SJ: Dejan to look into this
         _contentRepository.lockItem(site, path);
@@ -1953,7 +2297,8 @@ public class ContentServiceImpl implements ContentService {
 
     @Override
     @ValidateParams
-    public void unLockContent(@ValidateStringParam(name = "site") String site, @ValidateSecurePathParam(name = "path") String path) {
+    public void unLockContent(@ValidateStringParam(name = "site") String site,
+                              @ValidateSecurePathParam(name = "path") String path) {
         ContentItemTO item = getContentItem(site, path, 0);
         objectStateService.transition(site, item, TransitionEvent.CANCEL_EDIT); // this unlocks too
         _contentRepository.unLockItem(site, path);
@@ -1962,7 +2307,9 @@ public class ContentServiceImpl implements ContentService {
 
     @Override
     @ValidateParams
-    public List<DmOrderTO> getItemOrders(@ValidateStringParam(name = "site") String site, @ValidateSecurePathParam(name = "path") String path) throws ContentNotFoundException {
+    public List<DmOrderTO> getItemOrders(@ValidateStringParam(name = "site") String site,
+                                         @ValidateSecurePathParam(name = "path") String path)
+            throws ContentNotFoundException {
         List<DmOrderTO> dmOrderTOs = getOrders(site, path, "default", false);
         for (DmOrderTO dmOrderTO : dmOrderTOs) {
             dmOrderTO.setName(StringEscapeUtils.escapeJava(dmOrderTO.getName()));
@@ -1998,7 +2345,8 @@ public class ContentServiceImpl implements ContentService {
             String pathIndex = relativePath + FILE_SEPARATOR + DmConstants.INDEX_FILE;
             for (ContentItemTO child : item.getChildren()) {
                 // exclude index.xml, the level descriptor and floating pages at the path
-                if (!(pathIndex.equals(child.getUri()) || child.isLevelDescriptor() || child.isDeleted()) && (!child.isFloating() || includeFloating)) {
+                if (!(pathIndex.equals(child.getUri()) || child.isLevelDescriptor() || child.isDeleted()) &&
+                        (!child.isFloating() || includeFloating)) {
                     DmOrderTO order = new DmOrderTO();
                     order.setId(child.getUri());
                     Double orderNumber = child.getOrder(orderName);
@@ -2027,7 +2375,11 @@ public class ContentServiceImpl implements ContentService {
 
     @Override
     @ValidateParams
-    public double reorderItems(@ValidateStringParam(name = "site") String site, @ValidateSecurePathParam(name = "relativePath") String relativePath, @ValidateSecurePathParam(name = "before") String before, @ValidateSecurePathParam(name = "after") String after, @ValidateStringParam(name = "orderName") String orderName) throws ServiceException {
+    public double reorderItems(@ValidateStringParam(name = "site") String site,
+                               @ValidateSecurePathParam(name = "relativePath") String relativePath,
+                               @ValidateSecurePathParam(name = "before") String before,
+                               @ValidateSecurePathParam(name = "after") String after,
+                               @ValidateStringParam(name = "orderName") String orderName) throws ServiceLayerException {
         Double beforeOrder = null;
         Double afterOrder = null;
         DmOrderTO beforeOrderTO = null;
@@ -2058,12 +2410,16 @@ public class ContentServiceImpl implements ContentService {
 
         // if no after and before provided, the initial value is ORDER_INCREMENT
         if (afterOrder == null && beforeOrder == null) {
-            return dmPageNavigationOrderService.getNewNavOrder(site, ContentUtils.getParentUrl(relativePath.replace(FILE_SEPARATOR + DmConstants.INDEX_FILE, "")));
+            return dmPageNavigationOrderService.getNewNavOrder(site,
+                    ContentUtils.getParentUrl(relativePath.replace(FILE_SEPARATOR +
+                            DmConstants.INDEX_FILE, "")));
         } else if (beforeOrder == null) {
             return (0 + afterOrder) / 2;
         } else if (afterOrder == null) {
             logger.info("afterOrder == null");
-            return dmPageNavigationOrderService.getNewNavOrder(site, ContentUtils.getParentUrl(relativePath.replace(FILE_SEPARATOR + DmConstants.INDEX_FILE, "")), beforeOrder);
+            return dmPageNavigationOrderService.getNewNavOrder(site,
+                    ContentUtils.getParentUrl(relativePath.replace(FILE_SEPARATOR +
+                            DmConstants.INDEX_FILE, "")), beforeOrder);
         } else {
             //return (beforeOrder + afterOrder) / 2;
             return computeReorder(site, relativePath, beforeOrderTO, afterOrderTO, orderName);
@@ -2074,7 +2430,8 @@ public class ContentServiceImpl implements ContentService {
      * Will need to include the floating pages as well for orderValue computation
      * Since the beforeOrder and afterOrder in the UI does not include floating pages will need to do special processing
      */
-    protected double computeReorder(String site, String relativePath, DmOrderTO beforeOrderTO, DmOrderTO afterOrderTO, String orderName) throws ContentNotFoundException {
+    protected double computeReorder(String site, String relativePath, DmOrderTO beforeOrderTO, DmOrderTO afterOrderTO,
+                                    String orderName) throws ContentNotFoundException {
         // TODO: SJ: This seems excessive, all we need is: double result = (getBefore + getAfter) / 2; return result;
 
         List<DmOrderTO> orderTO = getOrders(site, relativePath, orderName, true);
@@ -2091,15 +2448,23 @@ public class ContentServiceImpl implements ContentService {
 
     @Override
     @ValidateParams
-    public boolean renameFolder(@ValidateStringParam(name = "site") String site, @ValidateSecurePathParam(name = "path") String path, @ValidateStringParam(name = "name") String name) {
+    public boolean renameFolder(@ValidateStringParam(name = "site") String site,
+                                @ValidateSecurePathParam(name = "path") String path,
+                                @ValidateStringParam(name = "name") String name) throws ServiceLayerException {
         boolean toRet = false;
-        String parentPath = FILE_SEPARATOR + FilenameUtils.getPathNoEndSeparator(path);
 
+        String parentPath = FILE_SEPARATOR + FilenameUtils.getPathNoEndSeparator(path);
         String targetPath = parentPath + FILE_SEPARATOR + name;
 
-        logger.debug("Rename folder for site {0} sourcePath {3} to target path {4}", site, path, targetPath);
+        if (contentExists(site, targetPath)) {
+            Map<String,String> ids = contentItemIdGenerator.getIds();
+            String id = ids.get(DmConstants.KEY_PAGE_GROUP_ID);
+            targetPath += "-" + id;
+        }
 
-        // NOTE: IN WRITE SCENARIOS the repository OP IS PART of this PIPELINE, for some reason, historically with MOVE it is not
+        logger.debug("Rename folder for site {0} sourcePath {3} to target path {4}", site, path, targetPath);
+        // NOTE: IN WRITE SCENARIOS the repository OP IS PART of this PIPELINE, for some reason,
+        // historically with MOVE it is not
         Map<String, String> commitIds = _contentRepository.moveContent(site, path, targetPath);
 
         if (commitIds != null) {
@@ -2124,68 +2489,175 @@ public class ContentServiceImpl implements ContentService {
         return toRet;
     }
 
-    private ContentRepository _contentRepository;
-    protected ServicesConfig servicesConfig;
-    protected GeneralLockService generalLockService;
-    protected ObjectStateService objectStateService;
-    protected DmDependencyService dependencyService;
-    protected ProcessContentExecutor contentProcessor;
-    protected ObjectMetadataManager objectMetadataManager;
-    protected SecurityService securityService;
-    protected DmPageNavigationOrderService dmPageNavigationOrderService;
-    protected SecurityProvider securityProvider;
-    protected ActivityService activityService;
-    protected DmContentLifeCycleService dmContentLifeCycleService;
-    protected EventService eventService;
-    protected SiteService siteService;
-    protected ContentItemIdGenerator contentItemIdGenerator;
-    protected StudioConfiguration studioConfiguration;
+    @Override
+    public boolean pushToRemote(String siteId, String remoteName, String remoteBranch)
+            throws ServiceLayerException, InvalidRemoteUrlException, AuthenticationException {
+        if (!siteService.exists(siteId)) {
+            throw new SiteNotFoundException();
+        }
+        boolean toRet = _contentRepository.pushToRemote(siteId, remoteName, remoteBranch);
+        SiteFeed siteFeed = siteService.getSite(siteId);
+        AuditLog auditLog = auditServiceInternal.createAuditLogEntry();
+        auditLog.setOperation(OPERATION_PUSH_TO_REMOTE);
+        auditLog.setSiteId(siteFeed.getId());
+        auditLog.setActorId(userService.getCurrentUser().getUsername());
+        auditLog.setPrimaryTargetId(remoteName + "/" + remoteBranch);
+        auditLog.setPrimaryTargetType(TARGET_TYPE_REMOTE_REPOSITORY);
+        auditLog.setPrimaryTargetValue(remoteName + "/" + remoteBranch);
+        auditServiceInternal.insertAuditLog(auditLog);
 
-    public ContentRepository getContentRepository() { return _contentRepository; }
-    public void setContentRepository(ContentRepository contentRepository) { this._contentRepository = contentRepository; }
+        return toRet;
+    }
 
-    public ServicesConfig getServicesConfig() { return servicesConfig; }
-    public void setServicesConfig(ServicesConfig servicesConfig) { this.servicesConfig = servicesConfig; }
+    @Override
+    public boolean pullFromRemote(String siteId, String remoteName, String remoteBranch)
+            throws ServiceLayerException, InvalidRemoteUrlException, AuthenticationException {
+        if (!siteService.exists(siteId)) {
+            throw new SiteNotFoundException(siteId);
+        }
+        boolean toRet = _contentRepository.pullFromRemote(siteId, remoteName, remoteBranch);
+        SiteFeed siteFeed = siteService.getSite(siteId);
+        AuditLog auditLog = auditServiceInternal.createAuditLogEntry();
+        auditLog.setOperation(OPERATION_PULL_FROM_REMOTE);
+        auditLog.setSiteId(siteFeed.getId());
+        auditLog.setActorId(userService.getCurrentUser().getUsername());
+        auditLog.setPrimaryTargetId(remoteName + "/" + remoteBranch);
+        auditLog.setPrimaryTargetType(TARGET_TYPE_REMOTE_REPOSITORY);
+        auditLog.setPrimaryTargetValue(remoteName + "/" + remoteBranch);
+        auditServiceInternal.insertAuditLog(auditLog);
+        
+        return toRet;
+    }
 
-    public GeneralLockService getGeneralLockService() { return generalLockService; }
-    public void setGeneralLockService(GeneralLockService generalLockService) { this.generalLockService = generalLockService; }
+    public ContentRepository getContentRepository() {
+        return _contentRepository;
+    }
+    public void setContentRepository(ContentRepository contentRepository) {
+        this._contentRepository = contentRepository;
+    }
 
-    public ObjectStateService getObjectStateService() { return objectStateService; }
-    public void setObjectStateService(ObjectStateService objectStateService) { this.objectStateService = objectStateService; }
+    public ServicesConfig getServicesConfig() {
+        return servicesConfig;
+    }
+    public void setServicesConfig(ServicesConfig servicesConfig) {
+        this.servicesConfig = servicesConfig;
+    }
 
-    public DmDependencyService getDependencyService() { return dependencyService; }
-    public void setDependencyService(DmDependencyService dependencyService) { this.dependencyService = dependencyService; }
+    public GeneralLockService getGeneralLockService() {
+        return generalLockService;
+    }
+    public void setGeneralLockService(GeneralLockService generalLockService) {
+        this.generalLockService = generalLockService;
+    }
 
-    public ProcessContentExecutor getContentProcessor() { return contentProcessor; }
-    public void setContentProcessor(ProcessContentExecutor contentProcessor) { this.contentProcessor = contentProcessor; }
+    public ObjectStateService getObjectStateService() {
+        return objectStateService;
+    }
+    public void setObjectStateService(ObjectStateService objectStateService) {
+        this.objectStateService = objectStateService;
+    }
 
-    public ObjectMetadataManager getObjectMetadataManager() { return objectMetadataManager; }
-    public void setObjectMetadataManager(ObjectMetadataManager objectMetadataManager) { this.objectMetadataManager = objectMetadataManager; }
+    public DependencyService getDependencyService() {
+        return dependencyService;
+    }
+    public void setDependencyService(DependencyService dependencyService) {
+        this.dependencyService = dependencyService;
+    }
 
-    public SecurityService getSecurityService() { return securityService; }
-    public void setSecurityService(SecurityService securityService) { this.securityService = securityService; }
+    public ProcessContentExecutor getContentProcessor() {
+        return contentProcessor;
+    }
+    public void setContentProcessor(ProcessContentExecutor contentProcessor) {
+        this.contentProcessor = contentProcessor;
+    }
 
-    public DmPageNavigationOrderService getDmPageNavigationOrderService() { return dmPageNavigationOrderService; }
-    public void setDmPageNavigationOrderService(DmPageNavigationOrderService dmPageNavigationOrderService) { this.dmPageNavigationOrderService = dmPageNavigationOrderService; }
+    public ObjectMetadataManager getObjectMetadataManager() {
+        return objectMetadataManager;
+    }
+    public void setObjectMetadataManager(ObjectMetadataManager objectMetadataManager) {
+        this.objectMetadataManager = objectMetadataManager;
+    }
 
-    public SecurityProvider getSecurityProvider() { return securityProvider; }
-    public void setSecurityProvider(SecurityProvider securityProvider) { this.securityProvider = securityProvider; }
+    public SecurityService getSecurityService() {
+        return securityService;
+    }
+    public void setSecurityService(SecurityService securityService) {
+        this.securityService = securityService;
+    }
 
-    public ActivityService getActivityService() { return activityService; }
-    public void setActivityService(ActivityService activityService) { this.activityService = activityService; }
+    public DmPageNavigationOrderService getDmPageNavigationOrderService() {
+        return dmPageNavigationOrderService;
+    }
+    public void setDmPageNavigationOrderService(DmPageNavigationOrderService dmPageNavigationOrderService) {
+        this.dmPageNavigationOrderService = dmPageNavigationOrderService;
+    }
 
-    public DmContentLifeCycleService getDmContentLifeCycleService() { return dmContentLifeCycleService; }
-    public void setDmContentLifeCycleService(DmContentLifeCycleService dmContentLifeCycleService) { this.dmContentLifeCycleService = dmContentLifeCycleService; }
+    public DmContentLifeCycleService getDmContentLifeCycleService() {
+        return dmContentLifeCycleService;
+    }
+    public void setDmContentLifeCycleService(DmContentLifeCycleService dmContentLifeCycleService) {
+        this.dmContentLifeCycleService = dmContentLifeCycleService;
+    }
 
-    public EventService getEventService() { return eventService; }
-    public void setEventService(EventService eventService) { this.eventService = eventService; }
+    public EventService getEventService() {
+        return eventService;
+    }
+    public void setEventService(EventService eventService) {
+        this.eventService = eventService;
+    }
 
-    public SiteService getSiteService() { return siteService; }
-    public void setSiteService(SiteService siteService) { this.siteService = siteService; }
+    public SiteService getSiteService() {
+        return siteService;
+    }
+    public void setSiteService(SiteService siteService) {
+        this.siteService = siteService;
+    }
 
-    public ContentItemIdGenerator getContentItemIdGenerator() { return contentItemIdGenerator; }
-    public void setContentItemIdGenerator(ContentItemIdGenerator contentItemIdGenerator) { this.contentItemIdGenerator = contentItemIdGenerator; }
+    public ContentItemIdGenerator getContentItemIdGenerator() {
+        return contentItemIdGenerator;
+    }
+    public void setContentItemIdGenerator(ContentItemIdGenerator contentItemIdGenerator) {
+        this.contentItemIdGenerator = contentItemIdGenerator;
+    }
 
-    public StudioConfiguration getStudioConfiguration() { return studioConfiguration; }
-    public void setStudioConfiguration(StudioConfiguration studioConfiguration) { this.studioConfiguration = studioConfiguration; }
+    public StudioConfiguration getStudioConfiguration() {
+        return studioConfiguration;
+    }
+    public void setStudioConfiguration(StudioConfiguration studioConfiguration) {
+        this.studioConfiguration = studioConfiguration;
+    }
+
+    public DependencyDiffService getDependencyDiffService() {
+        return dependencyDiffService;
+    }
+    public void setDependencyDiffService(DependencyDiffService dependencyDiffService) {
+        this.dependencyDiffService = dependencyDiffService;
+    }
+
+    public ContentTypeService getContentTypeService() {
+        return contentTypeService;
+    }
+    public void setContentTypeService(ContentTypeService contentTypeService) {
+        this.contentTypeService = contentTypeService;
+    }
+
+    public void setEntitlementValidator(final EntitlementValidator entitlementValidator) {
+        this.entitlementValidator = entitlementValidator;
+    }
+
+    public AuditServiceInternal getAuditServiceInternal() {
+        return auditServiceInternal;
+    }
+
+    public void setAuditServiceInternal(AuditServiceInternal auditServiceInternal) {
+        this.auditServiceInternal = auditServiceInternal;
+    }
+
+    public UserService getUserService() {
+        return userService;
+    }
+
+    public void setUserService(UserService userService) {
+        this.userService = userService;
+    }
 }

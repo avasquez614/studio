@@ -1,6 +1,5 @@
 /*
- * Crafter Studio Web-content authoring solution
- * Copyright (C) 2007-2017 Crafter Software Corporation.
+ * Copyright (C) 2007-2019 Crafter Software Corporation. All Rights Reserved.
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -23,9 +22,9 @@ import net.sf.json.JSONObject;
 import org.apache.commons.fileupload.servlet.ServletFileUpload;
 import org.apache.commons.io.IOUtils;
 import org.apache.commons.lang3.StringUtils;
-import org.craftercms.studio.api.v1.dal.User;
 import org.craftercms.studio.api.v1.log.Logger;
 import org.craftercms.studio.api.v1.log.LoggerFactory;
+import org.craftercms.studio.api.v2.dal.User;
 import org.springframework.http.HttpMethod;
 import org.springframework.security.access.ConfigAttribute;
 import org.springframework.security.core.Authentication;
@@ -35,6 +34,8 @@ import javax.servlet.http.HttpServletRequest;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.Collection;
+
+import static org.craftercms.studio.api.v2.utils.StudioConfiguration.CONFIGURATION_GLOBAL_SYSTEM_SITE;
 
 public class StudioGroupAPIAccessDecisionVoter extends StudioAbstractAccessDecisionVoter {
 
@@ -67,7 +68,7 @@ public class StudioGroupAPIAccessDecisionVoter extends StudioAbstractAccessDecis
             String userParam = request.getParameter("username");
             User currentUser = null;
             try {
-                currentUser = (User)authentication.getPrincipal();
+                currentUser = (User) authentication.getPrincipal();
             } catch (ClassCastException e) {
                 // anonymous user
                 if (!authentication.getPrincipal().toString().equals("anonymousUser")) {
@@ -104,7 +105,9 @@ public class StudioGroupAPIAccessDecisionVoter extends StudioAbstractAccessDecis
                 case GET_ALL:
                 case REMOVE_USER:
                 case UPDATE:
-                    if (currentUser != null && (isAdmin(currentUser) || isSiteAdmin(siteParam, currentUser))) {
+                    if (currentUser != null &&
+                            (isSiteAdmin(studioConfiguration.getProperty(CONFIGURATION_GLOBAL_SYSTEM_SITE),
+                                    currentUser) || isSiteAdmin(siteParam, currentUser))) {
                         toRet = ACCESS_GRANTED;
                     } else {
                         toRet = ACCESS_DENIED;
@@ -113,7 +116,8 @@ public class StudioGroupAPIAccessDecisionVoter extends StudioAbstractAccessDecis
                 case GET:
                 case GET_PER_SITE:
                 case USERS:
-                    if (currentUser != null && (isAdmin(currentUser) || isSiteMember(siteParam, currentUser))) {
+                    if (currentUser != null && (isSiteAdmin(siteParam, currentUser) ||
+                            isSiteMember(siteParam, currentUser))) {
                         toRet = ACCESS_GRANTED;
                     } else {
                         toRet = ACCESS_DENIED;

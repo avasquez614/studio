@@ -1,6 +1,5 @@
 /*
- * Crafter Studio Web-content authoring solution
- * Copyright (C) 2007-2016 Crafter Software Corporation.
+ * Copyright (C) 2007-2019 Crafter Software Corporation. All Rights Reserved.
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -19,7 +18,7 @@ package org.craftercms.studio.api.v1.util.filter;
 
 import org.craftercms.studio.api.v1.to.ContentItemTO;
 
-import static org.craftercms.studio.api.v1.util.StudioConfiguration.CONTENT_TYPES_FILTER_COMPONENTS_INCLUDE_PATTERN;
+import static org.craftercms.studio.api.v2.utils.StudioConfiguration.CONTENT_TYPES_FILTER_COMPONENTS_INCLUDE_PATTERN;
 
 public class ComponentFilter extends AbstractFilter {
 

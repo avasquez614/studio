@@ -1,27 +1,39 @@
-/*******************************************************************************
- * Crafter Studio Web-content authoring solution
- *     Copyright (C) 2007-2016 Crafter Software Corporation.
+/*
+ * Copyright (C) 2007-2019 Crafter Software Corporation. All Rights Reserved.
  *
- *     This program is free software: you can redistribute it and/or modify
- *     it under the terms of the GNU General Public License as published by
- *     the Free Software Foundation, either version 3 of the License, or
- *     (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
- *     This program is distributed in the hope that it will be useful,
- *     but WITHOUT ANY WARRANTY; without even the implied warranty of
- *     MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- *     GNU General Public License for more details.
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
  *
- *     You should have received a copy of the GNU General Public License
- *     along with this program.  If not, see <http://www.gnu.org/licenses/>.
- ******************************************************************************/
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ */
+
 package org.craftercms.studio.impl.v1.service.site;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.time.ZoneOffset;
 import java.time.ZonedDateTime;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
+import java.util.StringTokenizer;
+import java.util.UUID;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -35,19 +47,36 @@ import org.apache.http.client.methods.CloseableHttpResponse;
 import org.apache.http.client.methods.HttpGet;
 import org.apache.http.impl.client.CloseableHttpClient;
 import org.apache.http.impl.client.HttpClientBuilder;
-import org.craftercms.commons.validation.annotations.param.*;
+import org.craftercms.commons.entitlements.exception.EntitlementException;
+import org.craftercms.commons.entitlements.model.EntitlementType;
+import org.craftercms.commons.entitlements.validator.EntitlementValidator;
+import org.craftercms.commons.plugin.model.PluginDescriptor;
+import org.craftercms.commons.rest.RestServiceException;
+import org.craftercms.commons.validation.annotations.param.ValidateIntegerParam;
+import org.craftercms.commons.validation.annotations.param.ValidateNoTagsParam;
+import org.craftercms.commons.validation.annotations.param.ValidateParams;
+import org.craftercms.commons.validation.annotations.param.ValidateSecurePathParam;
+import org.craftercms.commons.validation.annotations.param.ValidateStringParam;
 import org.craftercms.studio.api.v1.constant.DmConstants;
 import org.craftercms.studio.api.v1.constant.StudioConstants;
-import org.craftercms.studio.api.v1.dal.*;
-import org.craftercms.studio.api.v1.deployment.PreviewDeployer;
+import org.craftercms.studio.api.v1.dal.GitLog;
+import org.craftercms.studio.api.v1.dal.ItemMetadata;
+import org.craftercms.studio.api.v1.dal.ItemState;
+import org.craftercms.studio.api.v1.dal.SiteFeed;
+import org.craftercms.studio.api.v1.dal.SiteFeedMapper;
 import org.craftercms.studio.api.v1.ebus.PreviewEventContext;
+import org.craftercms.studio.api.v1.exception.BlueprintNotFoundException;
 import org.craftercms.studio.api.v1.exception.ContentNotFoundException;
-import org.craftercms.studio.api.v1.exception.PreviewDeployerUnreachableException;
-import org.craftercms.studio.api.v1.exception.SearchUnreachableException;
-import org.craftercms.studio.api.v1.exception.ServiceException;
+import org.craftercms.studio.api.v1.exception.DeployerTargetException;
+import org.craftercms.studio.api.v1.exception.ServiceLayerException;
 import org.craftercms.studio.api.v1.exception.SiteAlreadyExistsException;
 import org.craftercms.studio.api.v1.exception.SiteCreationException;
 import org.craftercms.studio.api.v1.exception.SiteNotFoundException;
+import org.craftercms.studio.api.v1.exception.repository.InvalidRemoteRepositoryCredentialsException;
+import org.craftercms.studio.api.v1.exception.repository.InvalidRemoteRepositoryException;
+import org.craftercms.studio.api.v1.exception.repository.InvalidRemoteUrlException;
+import org.craftercms.studio.api.v1.exception.repository.RemoteRepositoryNotBareException;
+import org.craftercms.studio.api.v1.exception.repository.RemoteRepositoryNotFoundException;
 import org.craftercms.studio.api.v1.exception.security.GroupAlreadyExistsException;
 import org.craftercms.studio.api.v1.exception.security.UserNotFoundException;
 import org.craftercms.studio.api.v1.log.Logger;
@@ -55,7 +84,6 @@ import org.craftercms.studio.api.v1.log.LoggerFactory;
 import org.craftercms.studio.api.v1.repository.ContentRepository;
 import org.craftercms.studio.api.v1.repository.RepositoryItem;
 import org.craftercms.studio.api.v1.service.GeneralLockService;
-import org.craftercms.studio.api.v1.service.activity.ActivityService;
 import org.craftercms.studio.api.v1.service.configuration.ServicesConfig;
 import org.craftercms.studio.api.v1.service.configuration.SiteEnvironmentConfig;
 import org.craftercms.studio.api.v1.service.content.ContentService;
@@ -63,20 +91,33 @@ import org.craftercms.studio.api.v1.service.content.ContentTypeService;
 import org.craftercms.studio.api.v1.service.content.DmPageNavigationOrderService;
 import org.craftercms.studio.api.v1.service.content.ImportService;
 import org.craftercms.studio.api.v1.service.content.ObjectMetadataManager;
-import org.craftercms.studio.api.v1.service.dependency.DmDependencyService;
+import org.craftercms.studio.api.v1.service.dependency.DependencyService;
 import org.craftercms.studio.api.v1.service.deployment.DeploymentService;
 import org.craftercms.studio.api.v1.service.event.EventService;
 import org.craftercms.studio.api.v1.service.objectstate.ObjectStateService;
 import org.craftercms.studio.api.v1.service.objectstate.State;
 import org.craftercms.studio.api.v1.service.objectstate.TransitionEvent;
-import org.craftercms.studio.api.v1.service.search.SearchService;
-import org.craftercms.studio.api.v1.service.security.SecurityProvider;
 import org.craftercms.studio.api.v1.service.security.SecurityService;
 import org.craftercms.studio.api.v1.service.site.SiteConfigNotFoundException;
 import org.craftercms.studio.api.v1.service.site.SiteService;
-import org.craftercms.studio.api.v1.to.*;
-import org.craftercms.studio.api.v1.util.StudioConfiguration;
+import org.craftercms.studio.api.v1.to.EnvironmentConfigTO;
+import org.craftercms.studio.api.v1.to.PublishStatus;
+import org.craftercms.studio.api.v1.to.PublishingTargetTO;
+import org.craftercms.studio.api.v1.to.RemoteRepositoryInfoTO;
+import org.craftercms.studio.api.v1.to.RepoOperationTO;
+import org.craftercms.studio.api.v1.to.SiteBlueprintTO;
+import org.craftercms.studio.api.v1.to.SiteTO;
+import org.craftercms.studio.api.v2.dal.AuditLog;
+import org.craftercms.studio.api.v2.deployment.Deployer;
+import org.craftercms.studio.api.v2.exception.MissingPluginParameterException;
+import org.craftercms.studio.api.v2.service.audit.internal.AuditServiceInternal;
+import org.craftercms.studio.api.v2.service.config.ConfigurationService;
 import org.craftercms.studio.api.v2.service.notification.NotificationService;
+import org.craftercms.studio.api.v2.service.security.internal.GroupServiceInternal;
+import org.craftercms.studio.api.v2.service.security.internal.UserServiceInternal;
+import org.craftercms.studio.api.v2.service.site.internal.SitesServiceInternal;
+import org.craftercms.studio.api.v2.upgrade.UpgradeManager;
+import org.craftercms.studio.api.v2.utils.StudioConfiguration;
 import org.craftercms.studio.impl.v1.repository.job.RebuildRepositoryMetadata;
 import org.craftercms.studio.impl.v1.repository.job.SyncDatabaseWithRepository;
 import org.craftercms.studio.impl.v1.util.ContentUtils;
@@ -89,10 +130,34 @@ import org.dom4j.io.SAXReader;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.xml.sax.SAXException;
 
+import static org.craftercms.studio.api.v1.constant.StudioConstants.CONTENT_TYPE_CONFIG_FOLDER;
+import static org.craftercms.studio.api.v1.constant.StudioConstants.DEFAULT_ORGANIZATION_ID;
 import static org.craftercms.studio.api.v1.constant.StudioConstants.FILE_SEPARATOR;
+import static org.craftercms.studio.api.v1.constant.StudioConstants.MODULE_STUDIO;
+import static org.craftercms.studio.api.v1.constant.StudioConstants.REMOTE_REPOSITORY_CREATE_OPTION_CLONE;
+import static org.craftercms.studio.api.v1.constant.StudioConstants.REMOTE_REPOSITORY_CREATE_OPTION_PUSH;
 import static org.craftercms.studio.api.v1.constant.StudioConstants.SITE_DEFAULT_GROUPS_DESCRIPTION;
 import static org.craftercms.studio.api.v1.ebus.EBusConstants.EVENT_PREVIEW_SYNC;
-import static org.craftercms.studio.api.v1.util.StudioConfiguration.*;
+import static org.craftercms.studio.api.v2.dal.AuditLogConstants.OPERATION_ADD_REMOTE;
+import static org.craftercms.studio.api.v2.dal.AuditLogConstants.OPERATION_CREATE;
+import static org.craftercms.studio.api.v2.dal.AuditLogConstants.OPERATION_DELETE;
+import static org.craftercms.studio.api.v2.dal.AuditLogConstants.OPERATION_MOVE;
+import static org.craftercms.studio.api.v2.dal.AuditLogConstants.OPERATION_REMOVE_REMOTE;
+import static org.craftercms.studio.api.v2.dal.AuditLogConstants.OPERATION_UPDATE;
+import static org.craftercms.studio.api.v2.dal.AuditLogConstants.ORIGIN_GIT;
+import static org.craftercms.studio.api.v2.dal.AuditLogConstants.TARGET_TYPE_CONTENT_ITEM;
+import static org.craftercms.studio.api.v2.dal.AuditLogConstants.TARGET_TYPE_REMOTE_REPOSITORY;
+import static org.craftercms.studio.api.v2.dal.AuditLogConstants.TARGET_TYPE_SITE;
+import static org.craftercms.studio.api.v2.utils.StudioConfiguration.BLUE_PRINTS_PATH;
+import static org.craftercms.studio.api.v2.utils.StudioConfiguration.CONFIGURATION_DEFAULT_ADMIN_GROUP;
+import static org.craftercms.studio.api.v2.utils.StudioConfiguration.CONFIGURATION_DEFAULT_GROUPS;
+import static org.craftercms.studio.api.v2.utils.StudioConfiguration.CONFIGURATION_ENVIRONMENT_ACTIVE;
+import static org.craftercms.studio.api.v2.utils.StudioConfiguration.CONFIGURATION_GLOBAL_CONFIG_BASE_PATH;
+import static org.craftercms.studio.api.v2.utils.StudioConfiguration.CONFIGURATION_GLOBAL_SYSTEM_SITE;
+import static org.craftercms.studio.api.v2.utils.StudioConfiguration.CONFIGURATION_SITE_CONFIG_BASE_PATH;
+import static org.craftercms.studio.api.v2.utils.StudioConfiguration.CONFIGURATION_SITE_ENVIRONMENT;
+import static org.craftercms.studio.api.v2.utils.StudioConfiguration.CONFIGURATION_SITE_PREVIEW_DESTROY_CONTEXT_URL;
+import static org.craftercms.studio.api.v2.utils.StudioConfiguration.JOB_DEPLOY_CONTENT_TO_ENVIRONMENT_STATUS_MESSAGE_DEFAULT;
 
 /**
  * Note: consider renaming
@@ -104,15 +169,50 @@ public class SiteServiceImpl implements SiteService {
 
 	private final static Logger logger = LoggerFactory.getLogger(SiteServiceImpl.class);
 
+    protected Deployer deployer;
+    protected SiteServiceDAL _siteServiceDAL;
+    protected ServicesConfig servicesConfig;
+    protected ContentService contentService;
+    protected SiteEnvironmentConfig environmentConfig;
+    protected ContentRepository contentRepository;
+    protected ObjectStateService objectStateService;
+    protected DependencyService dependencyService;
+    protected SecurityService securityService;
+    protected DeploymentService deploymentService;
+    protected ObjectMetadataManager objectMetadataManager;
+    protected DmPageNavigationOrderService dmPageNavigationOrderService;
+    protected ContentTypeService contentTypeService;
+    protected ImportService importService;
+    protected NotificationService notificationService;
+    protected GeneralLockService generalLockService;
+    protected RebuildRepositoryMetadata rebuildRepositoryMetadata;
+    protected SyncDatabaseWithRepository syncDatabaseWithRepository;
+    protected EventService eventService;
+    protected GroupServiceInternal groupServiceInternal;
+    protected UserServiceInternal userServiceInternal;
+    protected UpgradeManager upgradeManager;
+    protected StudioConfiguration studioConfiguration;
+    protected SitesServiceInternal sitesServiceInternal;
+    protected AuditServiceInternal auditServiceInternal;
+    protected ConfigurationService configurationService;
+
+    @Autowired
+    protected SiteFeedMapper siteFeedMapper;
+
+    protected EntitlementValidator entitlementValidator;
+
     @Override
     @ValidateParams
-    public boolean writeConfiguration(@ValidateStringParam(name = "site") String site, @ValidateSecurePathParam(name = "path") String path, InputStream content) throws ServiceException {
+    public boolean writeConfiguration(@ValidateStringParam(name = "site") String site,
+                                      @ValidateSecurePathParam(name = "path") String path, InputStream content)
+            throws ServiceLayerException {
         // Write site configuration
-        ActivityService.ActivityType activityType = ActivityService.ActivityType.UPDATED;
+        String operation = OPERATION_UPDATE;
         if (!contentRepository.contentExists(site, path)) {
-            activityType = ActivityService.ActivityType.CREATED;
+            operation = OPERATION_CREATE;
         }
         String commitId = contentRepository.writeContent(site, path, content);
+        contentRepository.reloadRepository(site);
 
         PreviewEventContext context = new PreviewEventContext();
         context.setSite(site);
@@ -125,7 +225,15 @@ public class SiteServiceImpl implements SiteService {
         } else {
             extraInfo.put(DmConstants.KEY_CONTENT_TYPE, StudioConstants.CONTENT_TYPE_CONFIGURATION);
         }
-        activityService.postActivity(site, user, path, activityType, ActivityService.ActivitySource.UI, extraInfo);
+        SiteFeed siteFeed = getSite(site);
+        AuditLog auditLog = auditServiceInternal.createAuditLogEntry();
+        auditLog.setOperation(operation);
+        auditLog.setSiteId(siteFeed.getId());
+        auditLog.setActorId(user);
+        auditLog.setPrimaryTargetId(site + ":" + path);
+        auditLog.setPrimaryTargetType(TARGET_TYPE_CONTENT_ITEM);
+        auditLog.setPrimaryTargetValue(path);
+        auditServiceInternal.insertAuditLog(auditLog);
         objectStateService.transition(site, path, TransitionEvent.SAVE);
         if (!objectMetadataManager.metadataExist(site, path)) {
             objectMetadataManager.insertNewObjectMetadata(site, path);
@@ -148,7 +256,8 @@ public class SiteServiceImpl implements SiteService {
 
 	@Override
     @ValidateParams
-	public boolean writeConfiguration(@ValidateSecurePathParam(name = "path") String path, InputStream content) throws ServiceException {
+	public boolean writeConfiguration(@ValidateSecurePathParam(name = "path") String path, InputStream content)
+            throws ServiceLayerException {
 	    // Write global configuration
         String commitId = contentRepository.writeContent("", path, content);
         boolean toReturn = StringUtils.isEmpty(commitId);
@@ -178,20 +287,24 @@ public class SiteServiceImpl implements SiteService {
 
 	@Override
     @ValidateParams
-	public Map<String, Object> getConfiguration(@ValidateStringParam(name = "site") String site, @ValidateSecurePathParam(name = "path") String path, boolean applyEnv) {
+	public Map<String, Object> getConfiguration(@ValidateStringParam(name = "site") String site,
+                                                @ValidateSecurePathParam(name = "path") String path,
+                                                boolean applyEnv) {
 		String configPath;
+        String configContent;
 		if (StringUtils.isEmpty(site)) {
 			configPath = getGlobalConfigRoot() + path;
+			configContent = contentService.getContentAsString(site, configPath);
 		} else {
-			if (applyEnv) {
-				configPath = getEnvironmentConfigPath().replaceAll(StudioConstants.PATTERN_SITE, site).replaceAll(
-						StudioConstants.PATTERN_ENVIRONMENT, getEnvironment())
-						+ path;
-			} else {
-				configPath = getSitesConfigPath() + path;
-			}
+		    if (path.startsWith(FILE_SEPARATOR + CONTENT_TYPE_CONFIG_FOLDER + FILE_SEPARATOR)) {
+                configPath = getSitesConfigPath() + path;
+                configContent = contentService.getContentAsString(site, configPath);
+            } else {
+		        configContent = configurationService.getConfigurationAsString(site, MODULE_STUDIO, path,
+                        studioConfiguration.getProperty(CONFIGURATION_ENVIRONMENT_ACTIVE));
+            }
 		}
-		String configContent = contentService.getContentAsString(site, configPath);
+
 
 		Map<String, Object> toRet = null;
 		if (configContent != null) {
@@ -283,161 +396,173 @@ public class SiteServiceImpl implements SiteService {
         return toRet;
     }
 
-   	@Override
+	@Override
+	public int countSites() {
+		return siteFeedMapper.countSites();
+	}
+
+	@Override
     @ValidateParams
-   	public void createSiteFromBlueprint(@ValidateStringParam(name = "blueprintName") String blueprintName, @ValidateNoTagsParam(name = "siteName") String siteName, @ValidateStringParam(name = "siteId") String siteId, @ValidateNoTagsParam(name = "desc") String desc) throws
-	    SiteAlreadyExistsException, SiteCreationException, PreviewDeployerUnreachableException, SearchUnreachableException {
+   	public void createSiteFromBlueprint(@ValidateStringParam(name = "blueprintId") String blueprintId,
+                                           @ValidateNoTagsParam(name = "siteName") String siteName,
+                                           @ValidateStringParam(name = "siteId") String siteId,
+                                           @ValidateStringParam(name = "sandboxBranch") String sandboxBranch,
+                                           @ValidateNoTagsParam(name = "desc") String desc,
+                                           Map<String, String> params, boolean createAsOrphan)
+            throws SiteAlreadyExistsException, SiteCreationException, DeployerTargetException,
+            BlueprintNotFoundException, MissingPluginParameterException {
 	    if (exists(siteId)) {
 	        throw new SiteAlreadyExistsException();
         }
 
+	    logger.debug("Get blueprint descriptor for: " + blueprintId);
+        PluginDescriptor descriptor = sitesServiceInternal.getBlueprintDescriptor(blueprintId);
+        if (Objects.isNull(descriptor)) {
+            throw new BlueprintNotFoundException();
+        }
+
+        logger.debug("Validating blueprint parameters");
+        sitesServiceInternal.validateBlueprintParameters(descriptor, params);
+        String blueprintLocation = sitesServiceInternal.getBlueprintLocation(blueprintId);
+        String searchEngine = descriptor.getPlugin().getSearchEngine();
+
+        logger.debug("Validate site entitlements");
+        try {
+			entitlementValidator.validateEntitlement(EntitlementType.SITE, 1);
+		} catch (EntitlementException e) {
+	    	throw new SiteCreationException("Unable to complete request due to entitlement limits. Please contact " +
+                                            "your system administrator.", e);
+		}
+
+        logger.info("Starting site creation process for site " + siteName + " from " + blueprintId + " blueprint.");
         boolean success = true;
 
-	    // TODO: SJ: We must fail site creation if any of the site creations steps fail and rollback
-	    // TODO: SJ: For example: Create site => Create Search Index (success), create Deployer Target (fail) = fail
-	    // TODO: SJ: and rollback the whole thing.
-	    // TODO: SJ: What we need to do for site creation and the order of execution:
-	    // TODO: SJ: 1) search index, 2) deployer target, 3) git repo, 4) database, 5) kick deployer
+	    // We must fail site creation if any of the site creations steps fail and rollback
+	    // For example: Create site => create Deployer Target (fail) = fail
+	    // and rollback the whole thing.
+	    // What we need to do for site creation and the order of execution:
+	    // 1) deployer target, 2) git repo, 3) database, 4) kick deployer
+        String siteUuid = UUID.randomUUID().toString();
 
-	    // Attempt to create the search index for the new site
-	    try {
-		    searchService.createIndex(siteId);
-	    } catch (ServiceException e) {
-		    success = false;
-		    logger.error("Error while creating site: " + siteName + " ID: " + siteId + " from blueprint: " +
-			    blueprintName + ". Is the Search running and configured correctly in Studio?", e);
-		    throw new SearchUnreachableException("Error while creating site: " + siteName + " ID: " + siteId + " from"
-			    + " blueprint: " + blueprintName + ". Is the Search running and configured correctly in Studio?");
-	    }
+	    // Create the site in the preview deployer
+        logger.info("Creating deployer targets.");
+        try {
+            deployer.createTargets(siteId, searchEngine);
+        } catch (Exception e) {
+            success = false;
+            String msg = "Error while creating site: " + siteName + " ID: " + siteId + " from blueprint: " +
+                         blueprintId + ". The required Deployer targets couldn't be created";
 
-	    // Check if search index creation was successful, create the site in the preview deployer
-	    if (success) {
-	    	    try {
-	    	    	success = previewDeployer.createTarget(siteId);
-		        } catch (Exception e) {
-			        success = false;
-			        logger.error("Error while creating site: " + siteName + " ID: " + siteId + " from blueprint: " +
-				        blueprintName + ". Is the Preview Deployer running and configured correctly in Studio?", e);
-		        }
+            logger.error(msg, e);
 
-		        if (!success) {
-			        logger.error("Error while creating site: " + siteName + " ID: " + siteId + " from blueprint: " +
-				        blueprintName + ". Is the Preview Deployer running and configured correctly in Studio?");
-			        // Rollback search index creation
-			        try {
-				        searchService.deleteIndex(siteId);
-			        } catch (ServiceException e) {
-				        logger.error("Error while rolling back/deleting site: " + siteName + " ID: " + siteId +
-					        " from blueprint: " + blueprintName + ". This means the site search index (core) is " +
-					        "still present, but the site is not successfully created.", e);
-			        }
-
-			        throw new PreviewDeployerUnreachableException("Error while creating site: " + siteName + " ID: "
-				        + siteId + " from blueprint: " + blueprintName + ". Is the Preview Deployer running and "
-				        + "configured correctly in Studio?");
-		        }
-	    }
+            throw new DeployerTargetException(msg, e);
+        }
 
 	    if (success) {
 	 		try {
-			    success = createSiteFromBlueprintGit(blueprintName, siteName, siteId, desc);
+	 		    logger.info("Copying site content from blueprint.");
+                success = createSiteFromBlueprintGit(blueprintLocation, siteName, siteId, sandboxBranch, desc, params);
 
-			    String lastCommitId = contentRepository.getRepoLastCommitId(siteId);
+                logger.debug("Adding site UUID.");
+                addSiteUuidFile(siteId, siteUuid);
 
-			    // Set object states
-			    createObjectStatesforNewSite(siteId);
+                logger.info("Adding site record to database for site " + siteId);
+                // insert database records
+                SiteFeed siteFeed = new SiteFeed();
+                siteFeed.setName(siteName);
+                siteFeed.setSiteId(siteId);
+                siteFeed.setSiteUuid(siteUuid);
+                siteFeed.setDescription(desc);
+                siteFeed.setPublishingStatusMessage(
+                        studioConfiguration.getProperty(JOB_DEPLOY_CONTENT_TO_ENVIRONMENT_STATUS_MESSAGE_DEFAULT));
+                siteFeed.setSandboxBranch(sandboxBranch);
+                siteFeed.setSearchEngine(searchEngine);
+                siteFeedMapper.createSite(siteFeed);
 
-			    // set object metadata
-                createObjectMetadataforNewSite(siteId, lastCommitId);
+                logger.info("Upgrading site.");
+                upgradeManager.upgradeSite(siteId);
 
-			    // Extract dependencies
-			    extractDependenciesForNewSite(siteId);
+                logger.debug("Adding audit log");
+                insertCreateSiteAuditLog(siteId, siteName);
 
-			    // Extract metadata ?
+                // Add default groups
+                logger.info("Adding default groups");
+                addDefaultGroupsForNewSite(siteId);
 
-			    // permissions
-			    // environment overrides
+                logger.info("Reload site configuration");
+                reloadSiteConfiguration(siteId);
 
-			    // initial deployment
+                logger.info("Syncing database with repository.");
+                syncDatabaseWithRepo(siteId, contentRepository.getRepoFirstCommitId(siteId), true);
+
+                // initial deployment
+                logger.info("Performing initial deployment");
                 List<PublishingTargetTO> publishingTargets = getPublishingTargetsForSite(siteId);
                 if (publishingTargets != null && publishingTargets.size() > 0) {
                     for (PublishingTargetTO target : publishingTargets) {
                         if (StringUtils.isNotEmpty(target.getRepoBranchName())) {
-                            contentRepository.initialPublish(siteId, target.getRepoBranchName(), securityProvider.getCurrentUser(), "Create site.");
+                            contentRepository.initialPublish(siteId, sandboxBranch, target.getRepoBranchName(),
+                                    securityService.getCurrentUser(), "Create site.");
                         }
                     }
                 }
                 objectStateService.setStateForSiteContent(siteId, State.EXISTING_UNEDITED_UNLOCKED);
-
-			    // insert database records
-			    SiteFeed siteFeed = new SiteFeed();
-			    siteFeed.setName(siteName);
-			    siteFeed.setSiteId(siteId);
-			    siteFeed.setDescription(desc);
-			    siteFeed.setLastCommitId(lastCommitId);
-			    siteFeed.setPublishingStatusMessage(studioConfiguration.getProperty(JOB_DEPLOY_CONTENT_TO_ENVIRONMENT_STATUS_MESSAGE_DEFAULT));
-			    siteFeedMapper.createSite(siteFeed);
-
-			    contentRepository.insertGitLog(siteId, lastCommitId, 1);
-
-                // Add default groups
-                addDefaultGroupsForNewSite(siteId);
-
-                // Add creator to admin group
-                securityService.addUserToGroup(siteId, getDefaultAdminGroup(), securityService.getCurrentUser());
-
-                reloadSiteConfiguration(siteId);
 	        } catch(Exception e) {
-	            // TODO: SJ: We need better exception handling here
 	            success = false;
 	            logger.error("Error while creating site: " + siteName + " ID: " + siteId + " from blueprint: " +
-	                    blueprintName + ". Rolling back.", e);
+	                    blueprintId + ". Rolling back.", e);
 
-			    boolean deleted = previewDeployer.deleteTarget(siteId);
-				if (!deleted) {
-					logger.error("Error while rolling back/deleting site: " + siteName + " ID: " + siteId +
-						" from blueprint: " + blueprintName + ". This means the site's preview deployer target is " +
-						"still present, but the site is not successfully created.");
-				}
+				deleteSite(siteId);
 
-			    try {
-				    searchService.deleteIndex(siteId);
-			    } catch (ServiceException ex) {
-				    logger.error("Error while rolling back/deleting site: " + siteName + " ID: " + siteId +
-					    " from blueprint: " + blueprintName + ". This means the site search index (core) is " +
-					    "still present, but the site is not successfully created.", ex);
-			    }
-
-			    throw new SiteCreationException("Error while creating site: " + siteName + " ID: " + siteId + " from blueprint: " +
-				    blueprintName + ". Rolling back.");
+			    throw new SiteCreationException("Error while creating site: " + siteName + " ID: " + siteId +
+                                                " from blueprint: " + blueprintId + ". Rolling back.");
 		    }
 	    }
 
 	    if (success) {
+	        logger.info("Syncing all content to preview.");
 		    // Now that everything is created, we can sync the preview deployer with the new content
 		    try {
 			    deploymentService.syncAllContentToPreview(siteId, true);
-		    } catch (ServiceException e) {
-			    // TODO: SJ: We need better exception handling here
+		    } catch (ServiceLayerException e) {
 			    logger.error("Error while syncing site: " + siteName + " ID: " + siteId + " to preview. Site was "
 				    + "successfully created otherwise. Ignoring.", e);
 
-			    throw new SiteCreationException("Error while syncing site: " + siteName + " ID: " + siteId + " to preview. Site was "
-				    + "successfully created, but it won't be preview-able until the Preview Deployer is reachable.");
+			    throw new SiteCreationException("Error while syncing site: " + siteName + " ID: " + siteId +
+                        " to preview. Site was successfully created, but it won't be preview-able until the Preview " +
+                        "Deployer is reachable.");
 		    }
 	    } else {
 		    throw new SiteCreationException("Error while creating site: " + siteName + " ID: " + siteId + ".");
 	    }
+	    logger.info("Finished creating site " + siteId);
     }
 
-    protected boolean createSiteFromBlueprintGit(String blueprintName, String siteName, String siteId, String desc) throws Exception {
+    private void insertCreateSiteAuditLog(String siteId, String siteName) throws SiteNotFoundException {
+	    SiteFeed siteFeed = getSite(studioConfiguration.getProperty(CONFIGURATION_GLOBAL_SYSTEM_SITE));
+        String user = securityService.getCurrentUser();
+	    AuditLog auditLog = auditServiceInternal.createAuditLogEntry();
+        auditLog.setOperation(OPERATION_CREATE);
+        auditLog.setSiteId(siteFeed.getId());
+        auditLog.setActorId(user);
+        auditLog.setPrimaryTargetId(siteId);
+        auditLog.setPrimaryTargetType(TARGET_TYPE_SITE);
+        auditLog.setPrimaryTargetValue(siteName);
+        auditServiceInternal.insertAuditLog(auditLog);
+    }
+
+    protected boolean createSiteFromBlueprintGit(String blueprintLocation, String siteName, String siteId,
+                                                 String sandboxBranch, String desc, Map<String, String> params)
+            throws Exception {
         boolean success = true;
 
         // create site with git repo
-        contentRepository.createSiteFromBlueprint(blueprintName, siteId);
+        contentRepository.createSiteFromBlueprint(blueprintLocation, siteId, sandboxBranch, params);
+
 
         String siteConfigFolder = FILE_SEPARATOR + "config" + FILE_SEPARATOR + "studio";
-        replaceFileContentGit(siteId, siteConfigFolder + FILE_SEPARATOR + "site-config.xml", "SITENAME", siteId);
+        replaceFileContentGit(siteId, siteConfigFolder + FILE_SEPARATOR + "site-config.xml", "SITENAME",
+                siteId);
 
         return success;
     }
@@ -451,17 +576,6 @@ public class SiteServiceImpl implements SiteService {
         InputStream contentToWrite = IOUtils.toInputStream(contentAsString);
 
         contentRepository.writeContent(site, path, contentToWrite);
-    }
-
-    protected void replaceFileContent(String path, String find, String replace) throws Exception {
-    	InputStream content = contentRepository.getContent("", path);
-    	String contentAsString = IOUtils.toString(content);
-
-    	contentAsString = contentAsString.replaceAll(find, replace);
-
-    	InputStream contentToWrite = IOUtils.toInputStream(contentAsString);
-
-		contentRepository.writeContent("", path, contentToWrite);
     }
 
 	protected void createObjectStatesforNewSite(String site) {
@@ -487,10 +601,12 @@ public class SiteServiceImpl implements SiteService {
         RepositoryItem[] children = contentRepository.getContentChildren(site, path);
         for (RepositoryItem child : children) {
             if (child.isFolder) {
-                createObjectMetadataNewSiteObjectFolder(site, child.path + FILE_SEPARATOR + child.name, lastCommitId);
+                createObjectMetadataNewSiteObjectFolder(site, child.path + FILE_SEPARATOR + child.name,
+                        lastCommitId);
             } else {
                 objectMetadataManager.insertNewObjectMetadata(site, child.path + FILE_SEPARATOR + child.name);
-                objectMetadataManager.updateCommitId(site, child.path + FILE_SEPARATOR + child.name, lastCommitId);
+                objectMetadataManager.updateCommitId(site, child.path + FILE_SEPARATOR + child.name,
+                        lastCommitId);
             }
         }
     }
@@ -510,14 +626,13 @@ public class SiteServiceImpl implements SiteService {
 
                 if (childPath.endsWith(DmConstants.XML_PATTERN)) {
                     try {
-                        Document doc = contentService.getContentAsDocument(site, childPath);
-                        dmDependencyService.extractDependencies(site, childPath, doc, globalDeps);
+                        dependencyService.upsertDependencies(site, childPath);
                     } catch (ContentNotFoundException e) {
-                        logger.error("Failed to extract dependencies for document: site " + site + " path " + childPath, e);
-                    } catch (ServiceException e) {
-                        logger.error("Failed to extract dependencies for document: site " + site + " path " + childPath, e);
-                    } catch (DocumentException e) {
-                        logger.error("Failed to extract dependencies for document: site " + site + " path " + childPath, e);
+                        logger.error("Failed to extract dependencies for document: site " + site + " path " +
+                                childPath, e);
+                    } catch (ServiceLayerException e) {
+                        logger.error("Failed to extract dependencies for document: site " + site + " path " +
+                                childPath, e);
                     }
                 } else {
 
@@ -535,19 +650,9 @@ public class SiteServiceImpl implements SiteService {
                     }
                     try {
                         if (isCss || isJs || isTemplate) {
-                            String content = contentService.getContentAsString(site, childPath);
-                            if (StringUtils.isNotEmpty(content)) {
-                                StringBuffer sb = new StringBuffer(content);
-                                if (isCss) {
-                                    dmDependencyService.extractDependenciesStyle(site, childPath, sb, globalDeps);
-                                } else if (isJs) {
-                                    dmDependencyService.extractDependenciesJavascript(site, childPath, sb, globalDeps);
-                                } else if (isTemplate) {
-                                    dmDependencyService.extractDependenciesTemplate(site, childPath, sb, globalDeps);
-                                }
-                            }
+                            dependencyService.upsertDependencies(site, childPath);
                         }
-                    } catch (ServiceException e) {
+                    } catch (ServiceLayerException e) {
                         logger.error("Failed to extract dependencies for: site " + site + " path " + childPath, e);
                     }
                 }
@@ -560,16 +665,384 @@ public class SiteServiceImpl implements SiteService {
         for (String group : defaultGroups) {
             String description = group + SITE_DEFAULT_GROUPS_DESCRIPTION;
             try {
-                securityService.createGroup(group, description, siteId);
-            } catch (SiteNotFoundException e) {
-	            logger.warn("Default group: " + group + " not created. Site " + siteId + "is not found.", e);
-            } catch (GroupAlreadyExistsException e) {
-                logger.warn("Default group: " + group + " not created. It already exists for site " + siteId + ".", e);
+                if (!groupServiceInternal.groupExists(-1, group)) {
+					try {
+						groupServiceInternal.createGroup(DEFAULT_ORGANIZATION_ID, group, description);
+					} catch (GroupAlreadyExistsException e) {
+						throw new IllegalStateException(e);
+					}
+				} else {
+                    logger.warn("Default group: " + group + " not created. It already exists.");
+                }
+            } catch (ServiceLayerException e) {
+                logger.warn("Error creating group " + group, e);
             }
         }
     }
 
-	@Override
+    @Override
+    @ValidateParams
+    public void createSiteWithRemoteOption(@ValidateStringParam(name = "siteId") String siteId,
+                                           @ValidateStringParam(name = "sandboxBranch") String sandboxBranch,
+                                           @ValidateNoTagsParam(name = "description") String description,
+                                           String blueprintName,
+                                           @ValidateStringParam(name = "remoteName") String remoteName,
+                                           @ValidateStringParam(name = "remoteUrl") String remoteUrl,
+                                           String remoteBranch, boolean singleBranch, String authenticationType,
+                                           String remoteUsername, String remotePassword, String remoteToken,
+                                           String remotePrivateKey,
+                                           @ValidateStringParam(name = "createOption") String createOption,
+                                           Map<String, String> params, boolean createAsOrphan)
+            throws ServiceLayerException, InvalidRemoteRepositoryException, InvalidRemoteRepositoryCredentialsException,
+            RemoteRepositoryNotFoundException, RemoteRepositoryNotBareException, InvalidRemoteUrlException {
+        if (exists(siteId)) {
+            throw new SiteAlreadyExistsException();
+        }
+
+        logger.debug("Validate site entitlements");
+		try {
+			entitlementValidator.validateEntitlement(EntitlementType.SITE, 1);
+		} catch (EntitlementException e) {
+			throw new SiteCreationException("Unable to complete request due to entitlement limits. Please contact your "
+				+ "system administrator.", e);
+		}
+
+        switch (createOption) {
+            case REMOTE_REPOSITORY_CREATE_OPTION_CLONE:
+                logger.info("Clone from remote repository create option selected");
+                createSiteCloneRemote(siteId, sandboxBranch, description, remoteName, remoteUrl, remoteBranch,
+                        singleBranch, authenticationType, remoteUsername, remotePassword, remoteToken, remotePrivateKey,
+                        params, createAsOrphan);
+                break;
+
+            case REMOTE_REPOSITORY_CREATE_OPTION_PUSH:
+                logger.info("Push to remote repository create option selected");
+                createSitePushToRemote(siteId, sandboxBranch, description, blueprintName, remoteName, remoteUrl,
+                        remoteBranch, authenticationType, remoteUsername, remotePassword, remoteToken,
+                        remotePrivateKey, params, createAsOrphan);
+                break;
+
+            default:
+                logger.error("Invalid create option for create site using remote repository: " + createOption +
+                        "\nAvailable options: [" + REMOTE_REPOSITORY_CREATE_OPTION_CLONE + ", " +
+                        REMOTE_REPOSITORY_CREATE_OPTION_PUSH + "]");
+                break;
+        }
+    }
+
+    @SuppressWarnings("deprecation")
+    private void createSiteCloneRemote(String siteId, String sandboxBranch, String description, String remoteName,
+                                       String remoteUrl, String remoteBranch, boolean singleBranch,
+                                       String authenticationType, String remoteUsername, String remotePassword,
+                                       String remoteToken, String remotePrivateKey, Map<String, String> params,
+                                       boolean createAsOrphan)
+            throws ServiceLayerException, InvalidRemoteRepositoryException, InvalidRemoteRepositoryCredentialsException,
+            RemoteRepositoryNotFoundException, InvalidRemoteUrlException {
+        boolean success = true;
+
+        // We must fail site creation if any of the site creations steps fail and rollback
+        // For example: Create site => create Deployer Target (fail) = fail
+        // and rollback the whole thing.
+        // What we need to do for site creation and the order of execution:
+        // 1) git repo, 2) deployer target, 3) database, 4) kick deployer
+        String siteUuid = UUID.randomUUID().toString();
+
+        try {
+            // create site by cloning remote git repo
+            logger.info("Creating site " + siteId + " by cloning remote repository " + remoteName +
+                " (" + remoteUrl + ")");
+            success = contentRepository.createSiteCloneRemote(siteId, sandboxBranch, remoteName, remoteUrl,
+                remoteBranch, singleBranch, authenticationType, remoteUsername, remotePassword, remoteToken,
+                remotePrivateKey, params, createAsOrphan);
+
+        } catch (InvalidRemoteRepositoryException | InvalidRemoteRepositoryCredentialsException |
+            RemoteRepositoryNotFoundException | InvalidRemoteUrlException | ServiceLayerException e) {
+
+            contentRepository.deleteSite(siteId);
+
+            logger.error("Error while creating site: " + siteId + " ID: " + siteId + " as clone from " +
+                "remote repository: " + remoteName + " (" + remoteUrl + "). Rolling back.", e);
+
+            throw e;
+        }
+
+        // try to get the search engine from the blueprint descriptor file
+        String searchEngine = studioConfiguration.getProperty(StudioConfiguration.PREVIEW_SEARCH_ENGINE);
+
+        PluginDescriptor descriptor = sitesServiceInternal.getSiteBlueprintDescriptor(siteId);
+        if (Objects.nonNull(descriptor) && Objects.nonNull(descriptor.getPlugin())) {
+            searchEngine = descriptor.getPlugin().getSearchEngine();
+            logger.info("Using search engine {0} from plugin descriptor", searchEngine);
+        } else if (Objects.nonNull(descriptor) && Objects.nonNull(descriptor.getBlueprint())) {
+            searchEngine = descriptor.getBlueprint().getSearchEngine();
+            logger.info("Using search engine {0} from blueprint descriptor", searchEngine);
+        } else {
+            logger.info("Missing descriptor, using default search engine {0}", searchEngine);
+        }
+
+        if (success) {
+            // Create the site in the preview deployer
+            try {
+                logger.info("Creating Deployer targets for site " + siteId);
+                deployer.createTargets(siteId, searchEngine);
+            } catch (Exception e) {
+                logger.error("Error while creating site: " + siteId + " ID: " + siteId + " as clone from" +
+                             " remote repository: " + remoteName + " (" + remoteUrl + "). Rolling back...", e);
+
+                contentRepository.removeRemote(siteId, remoteName);
+                boolean deleted = contentRepository.deleteSite(siteId);
+
+                if (!deleted) {
+                    logger.error("Error while rolling back site: " + siteId);
+                }
+
+                throw new DeployerTargetException("Error while creating site: " + siteId + " ID: " + siteId +
+                                                  " as clone from remote repository: " + remoteName +
+                                                  " (" + remoteUrl + "). The required Deployer targets couldn't " +
+                                                  "be created", e);
+            }
+        }
+
+        if (success) {
+            try {
+                logger.debug("Adding site UUID.");
+                addSiteUuidFile(siteId, siteUuid);
+
+                // insert database records
+                logger.info("Adding site record to database for site " + siteId);
+                SiteFeed siteFeed = new SiteFeed();
+                siteFeed.setName(siteId);
+                siteFeed.setSiteId(siteId);
+                siteFeed.setSiteUuid(siteUuid);
+                siteFeed.setDescription(description);
+                siteFeed.setPublishingStatusMessage(
+                        studioConfiguration.getProperty(JOB_DEPLOY_CONTENT_TO_ENVIRONMENT_STATUS_MESSAGE_DEFAULT));
+                siteFeed.setSandboxBranch(sandboxBranch);
+                siteFeed.setSearchEngine(searchEngine);
+                siteFeedMapper.createSite(siteFeed);
+
+                upgradeManager.upgradeSite(siteId);
+
+                insertCreateSiteAuditLog(siteId, siteId);
+
+                // Add default groups
+                logger.info("Adding default groups for site " + siteId);
+                addDefaultGroupsForNewSite(siteId);
+
+                logger.info("Loading configuration for site " + siteId);
+                reloadSiteConfiguration(siteId);
+
+                logger.info("Sync database with repository for site " + siteId);
+                syncDatabaseWithRepo(siteId, contentRepository.getRepoFirstCommitId(siteId), true);
+
+                // initial deployment
+                logger.info("Executing initial deployement for site " + siteId);
+                List<PublishingTargetTO> publishingTargets = getPublishingTargetsForSite(siteId);
+                if (publishingTargets != null && publishingTargets.size() > 0) {
+                    for (PublishingTargetTO target : publishingTargets) {
+                        if (StringUtils.isNotEmpty(target.getRepoBranchName())) {
+                            contentRepository.initialPublish(siteId, sandboxBranch, target.getRepoBranchName(),
+                                    securityService.getCurrentUser(), "Create site.");
+                        }
+                    }
+                }
+                objectStateService.setStateForSiteContent(siteId, State.EXISTING_UNEDITED_UNLOCKED);
+            } catch(Exception e) {
+                success = false;
+                logger.error("Error while creating site: " + siteId + " ID: " + siteId + " as clone from " +
+                        "remote repository: " + remoteName + " (" + remoteUrl + "). Rolling back.", e);
+
+                deleteSite(siteId);
+
+                throw new SiteCreationException("Error while creating site: " + siteId + " ID: " + siteId +
+                        " as clone from remote repository: " + remoteName + " (" + remoteUrl + "). Rolling back.");
+            }
+        }
+
+        if (success) {
+            // Now that everything is created, we can sync the preview deployer with the new content
+            logger.info("Sync all site content to preview for " + siteId);
+            try {
+                deploymentService.syncAllContentToPreview(siteId, true);
+            } catch (ServiceLayerException e) {
+                logger.error("Error while syncing site: " + siteId + " ID: " + siteId + " to preview. Site was "
+                    + "successfully created otherwise. Ignoring.", e);
+
+                throw new SiteCreationException("Error while syncing site: " + siteId + " ID: " + siteId +
+                    " to preview. Site was successfully created, but it won't be preview-able until the " +
+                    "Preview Deployer is reachable.");
+            }
+        } else {
+            throw new SiteCreationException("Error while creating site: " + siteId + " ID: " + siteId + ".");
+        }
+        logger.info("Finished creating site " + siteId);
+    }
+
+    private void createSitePushToRemote(String siteId, String sandboxBranch, String description, String blueprintId,
+                                        String remoteName, String remoteUrl, String remoteBranch,
+                                        String authenticationType, String remoteUsername, String remotePassword,
+                                        String remoteToken, String remotePrivateKey, Map<String, String> params,
+                                        boolean createAsOrphan)
+            throws ServiceLayerException {
+        if (exists(siteId)) {
+            throw new SiteAlreadyExistsException();
+        }
+
+        logger.debug("Get blueprint descriptor for " + blueprintId);
+        PluginDescriptor descriptor = sitesServiceInternal.getBlueprintDescriptor(blueprintId);
+        if (Objects.isNull(descriptor)) {
+            throw new BlueprintNotFoundException();
+        }
+
+        logger.debug("Validate blueprint parameters");
+        sitesServiceInternal.validateBlueprintParameters(descriptor, params);
+        String blueprintLocation = sitesServiceInternal.getBlueprintLocation(blueprintId);
+        String searchEngine = descriptor.getPlugin().getSearchEngine();
+
+        boolean success = true;
+
+        // We must fail site creation if any of the site creations steps fail and rollback
+        // For example: Create site => create Deployer Target (fail) = fail
+        // and rollback the whole thing.
+        // What we need to do for site creation and the order of execution:
+        // 1) deployer target, 2) git repo, 3) database, 4) kick deployer
+        String siteUuid = UUID.randomUUID().toString();
+
+        logger.info("Starting site creation process for site " + siteId + " from " + blueprintId + " blueprint.");
+        // Create the site in the preview deployer
+        try {
+            logger.info("Creating Deployer targets for site " + siteId);
+            deployer.createTargets(siteId, searchEngine);
+        } catch (RestServiceException e) {
+            String msg = "Error while creating site: " + siteId + " ID: " + siteId + " from blueprint: " +
+                         blueprintId + ". The required Deployer targets couldn't be created";
+
+            logger.error(msg, e);
+
+            throw new DeployerTargetException(msg, e);
+        }
+
+        if (success) {
+            try {
+                logger.info("Creating site " + siteId + " from blueprint " + blueprintId);
+                success = createSiteFromBlueprintGit(blueprintLocation, siteId, siteId, sandboxBranch, description,
+                        params);
+
+                addSiteUuidFile(siteId, siteUuid);
+
+                // insert database records
+                logger.info("Adding site record to database for site " + siteId);
+                SiteFeed siteFeed = new SiteFeed();
+                siteFeed.setName(siteId);
+                siteFeed.setSiteId(siteId);
+                siteFeed.setSiteUuid(siteUuid);
+                siteFeed.setDescription(description);
+                siteFeed.setPublishingStatusMessage(
+                        studioConfiguration.getProperty(JOB_DEPLOY_CONTENT_TO_ENVIRONMENT_STATUS_MESSAGE_DEFAULT));
+                siteFeed.setSandboxBranch(sandboxBranch);
+                siteFeed.setSearchEngine(searchEngine);
+                siteFeedMapper.createSite(siteFeed);
+
+                logger.info("Upgrading site");
+                upgradeManager.upgradeSite(siteId);
+            } catch (Exception e) {
+                success = false;
+                logger.error("Error while creating site: " + siteId + " ID: " + siteId + " from blueprint: " +
+                             blueprintId + ". Rolling back...", e);
+
+                contentRepository.deleteSite(siteId);
+
+                try {
+                    deployer.deleteTargets(siteId);
+                } catch (Exception ex) {
+                    logger.error("Error while rolling back/deleting site: " + siteId + " ID: " + siteId +
+                                 " from blueprint: " + blueprintId + ". This means the site's Deployer " +
+                                 "targets are still present, but the site was not successfully created", e);
+                }
+
+                throw new SiteCreationException("Error while creating site: " + siteId + " ID: " + siteId +
+                                                " from blueprint: " + blueprintId, e);
+            }
+
+            if (success) {
+                try {
+
+                    logger.info("Pushing site " + siteId + " to remote repository " + remoteName + " (" +
+                            remoteUrl + ")");
+                    contentRepository.addRemote(siteId, remoteName, remoteUrl, authenticationType, remoteUsername,
+                            remotePassword, remoteToken, remotePrivateKey);
+                    contentRepository.createSitePushToRemote(siteId, remoteName, remoteUrl, authenticationType,
+                            remoteUsername, remotePassword, remoteToken, remotePrivateKey, createAsOrphan);
+                } catch (RemoteRepositoryNotFoundException | InvalidRemoteRepositoryException |
+                        InvalidRemoteRepositoryCredentialsException | RemoteRepositoryNotBareException |
+                        InvalidRemoteUrlException | ServiceLayerException e) {
+                    logger.error("Error while pushing site: " + siteId + " ID: " + siteId + " to remote repository "
+                            + remoteName + " (" + remoteUrl + ")", e);
+                    contentRepository.removeRemote(siteId, remoteName);
+                }
+
+            try {
+
+                    logger.debug("Adding audit logs.");
+                    insertCreateSiteAuditLog(siteId, siteId);
+                    insertAddRemoteAuditLog(siteId, remoteName);
+
+                    // Add default groups
+                    logger.info("Adding default groups for site " + siteId);
+                    addDefaultGroupsForNewSite(siteId);
+
+                    logger.info("Loading configuration for site " + siteId);
+                    reloadSiteConfiguration(siteId);
+
+                    logger.info("Sync database with repository for site " + siteId);
+                    syncDatabaseWithRepo(siteId, contentRepository.getRepoFirstCommitId(siteId), true);
+
+                    // initial deployment
+                    logger.info("Executing initial deployement for site " + siteId);
+                    List<PublishingTargetTO> publishingTargets = getPublishingTargetsForSite(siteId);
+                    if (publishingTargets != null && publishingTargets.size() > 0) {
+                        for (PublishingTargetTO target : publishingTargets) {
+                            if (StringUtils.isNotEmpty(target.getRepoBranchName())) {
+                                contentRepository.initialPublish(siteId, sandboxBranch, target.getRepoBranchName(),
+                                        securityService.getCurrentUser(), "Create site.");
+                            }
+                        }
+                    }
+
+                    objectStateService.setStateForSiteContent(siteId, State.EXISTING_UNEDITED_UNLOCKED);
+                } catch (Exception e) {
+                    success = false;
+                    logger.error("Error while creating site: " + siteId + " ID: " + siteId + " from blueprint: " +
+                            blueprintId + ". Rolling back.", e);
+
+                    deleteSite(siteId);
+
+                    throw new SiteCreationException("Error while creating site: " + siteId + " ID: " + siteId +
+                            " from blueprint: " + blueprintId + ". Rolling back.");
+                }
+            }
+        }
+
+        if (success) {
+            // Now that everything is created, we can sync the preview deployer with the new content
+            logger.info("Sync all content to preview for site " + siteId);
+            try {
+                deploymentService.syncAllContentToPreview(siteId, true);
+            } catch (ServiceLayerException e) {
+                logger.error("Error while syncing site: " + siteId + " ID: " + siteId + " to preview. Site was "
+                        + "successfully created otherwise. Ignoring.", e);
+
+                throw new SiteCreationException("Error while syncing site: " + siteId + " ID: " + siteId +
+                        " to preview. Site was successfully created, but it won't be preview-able until the " +
+                        "Preview Deployer is reachable.");
+            }
+        } else {
+            throw new SiteCreationException("Error while creating site: " + siteId + " ID: " + siteId + ".");
+        }
+        logger.info("Finished creating site " + siteId);
+    }
+
+    @Override
     @ValidateParams
    	public boolean deleteSite(@ValidateStringParam(name = "siteId") String siteId) {
  		boolean success = true;
@@ -580,20 +1053,14 @@ public class SiteServiceImpl implements SiteService {
             success = false;
             logger.error("Failed to stop publishing for site:" + siteId, e);
         }
-        try {
-	        logger.debug("Deleting search index");
-	        searchService.deleteIndex(siteId);
-        } catch(Exception e) {
-	        success = false;
-	        logger.error("Failed to delete search index for site:" + siteId, e);
-        }
 
 		try {
-		    logger.debug("Deleting preview deployer");
-		    previewDeployer.deleteTarget(siteId);
-		} catch(Exception e) {
+		    logger.debug("Deleting Deployer targets");
+
+		    deployer.deleteTargets(siteId);
+        } catch(Exception e) {
 			success = false;
-			logger.error("Failed to delete the preview deployer target for site:" + siteId, e);
+			logger.error("Failed to delete the Deployer target for sites:" + siteId, e);
 		}
 
 		try {
@@ -614,19 +1081,35 @@ public class SiteServiceImpl implements SiteService {
 	    try {
 		    // delete database records
 		    logger.debug("Deleting database records");
+		    SiteFeed siteFeed = getSite(siteId);
 			siteFeedMapper.deleteSite(siteId);
-			activityService.deleteActivitiesForSite(siteId);
-			dmDependencyService.deleteDependenciesForSite(siteId);
+			dependencyService.deleteSiteDependencies(siteId);
 	        deploymentService.deleteDeploymentDataForSite(siteId);
 	        objectStateService.deleteObjectStatesForSite(siteId);
 	        objectMetadataManager.deleteObjectMetadataForSite(siteId);
 	        dmPageNavigationOrderService.deleteSequencesForSite(siteId);
+	        contentRepository.deleteGitLogForSite(siteId);
+	        contentRepository.removeRemoteRepositoriesForSite(siteId);
+	        insertDeleteSiteAuditLog(siteId, siteFeed.getName());
 	    } catch(Exception e) {
 		    success = false;
 		    logger.error("Failed to delete the database for site:" + siteId, e);
 	    }
 
 	 	return success;
+    }
+
+    private void insertDeleteSiteAuditLog(String siteId, String siteName) throws SiteNotFoundException {
+	    SiteFeed siteFeed = getSite(studioConfiguration.getProperty(CONFIGURATION_GLOBAL_SYSTEM_SITE));
+        String user = securityService.getCurrentUser();
+        AuditLog auditLog = auditServiceInternal.createAuditLogEntry();
+        auditLog.setOperation(OPERATION_DELETE);
+        auditLog.setSiteId(siteFeed.getId());
+        auditLog.setActorId(user);
+        auditLog.setPrimaryTargetId(siteId);
+        auditLog.setPrimaryTargetType(TARGET_TYPE_SITE);
+        auditLog.setPrimaryTargetValue(siteName);
+        auditServiceInternal.insertAuditLog(auditLog);
     }
 
     private boolean destroySitePreviewContext(String site) {
@@ -653,34 +1136,47 @@ public class SiteServiceImpl implements SiteService {
     }
 
     private String getDestroySitePreviewContextUrl(String site) {
-	    StringBuilder sb = new StringBuilder(studioConfiguration.getProperty(PREVIEW_ENGINE_URL));
-        sb.append(studioConfiguration.getProperty(CONFIGURATION_SITE_PREVIEW_DESTROY_CONTEXT_URL));
-        String url = sb.toString();
+        String url = studioConfiguration.getProperty(CONFIGURATION_SITE_PREVIEW_DESTROY_CONTEXT_URL);
         url = url.replaceAll(StudioConstants.CONFIG_SITENAME_VARIABLE, site);
         return url;
     }
 
     @Override
 	public SiteBlueprintTO[] getAvailableBlueprints() {
-		RepositoryItem[] blueprintsFolders = contentRepository.getContentChildren("", studioConfiguration.getProperty(BLUE_PRINTS_PATH));
-		SiteBlueprintTO[] blueprints = new SiteBlueprintTO[blueprintsFolders.length];
+		RepositoryItem[] blueprintsFolders =
+                contentRepository.getContentChildren("", studioConfiguration.getProperty(BLUE_PRINTS_PATH));
+		List<SiteBlueprintTO> blueprints = new ArrayList<SiteBlueprintTO>();
 		int idx = 0;
 		for (RepositoryItem folder : blueprintsFolders) {
-			SiteBlueprintTO blueprintTO = new SiteBlueprintTO();
-			blueprintTO.id = folder.name;
-			blueprintTO.label = StringUtils.capitalize(folder.name);
-			blueprintTO.description = ""; // How do we populate this dynamicly
-			blueprintTO.screenshots = null;
-			blueprints[idx++] = blueprintTO;
+		    if (folder.isFolder) {
+                SiteBlueprintTO blueprintTO = new SiteBlueprintTO();
+                blueprintTO.id = folder.name;
+                blueprintTO.label = StringUtils.capitalize(folder.name);
+                blueprintTO.description = ""; // How do we populate this dynamicly
+                blueprintTO.screenshots = null;
+                blueprints.add(blueprintTO);
+            }
 		}
 
-		return blueprints;
+		return blueprints.toArray(new SiteBlueprintTO[blueprints.size()]);
 	}
 
     @Override
     @ValidateParams
     public String getPreviewServerUrl(@ValidateStringParam(name = "site") String site) {
         return environmentConfig.getPreviewServerUrl(site);
+    }
+
+    @Override
+    @ValidateParams
+    public String getPreviewEngineServerUrl(@ValidateStringParam(name = "site") String site) {
+        return environmentConfig.getPreviewEngineServerUrl(site);
+    }
+
+    @Override
+    @ValidateParams
+    public String getGraphqlServerUrl(@ValidateStringParam(name = "site") String site) {
+        return environmentConfig.getGraphqlServerUrl(site);
     }
 
     @Override
@@ -733,11 +1229,6 @@ public class SiteServiceImpl implements SiteService {
     }
 
     @Override
-    public void importSite(String config) {
-
-    }
-
-    @Override
     @ValidateParams
     public void syncRepository(@ValidateStringParam(name = "site") String site) throws SiteNotFoundException {
 		if (!exists(site)) {
@@ -762,7 +1253,8 @@ public class SiteServiceImpl implements SiteService {
 
     @Override
     @ValidateParams
-    public void updateLastCommitId(@ValidateStringParam(name = "site") String site, @ValidateStringParam(name = "commitId") String commitId) {
+    public void updateLastCommitId(@ValidateStringParam(name = "site") String site,
+                                   @ValidateStringParam(name = "commitId") String commitId) {
         Map<String, Object> params = new HashMap<String, Object>();
         params.put("siteId", site);
         params.put("lastCommitId", commitId);
@@ -778,17 +1270,28 @@ public class SiteServiceImpl implements SiteService {
 
     @Override
     @ValidateParams
-    public boolean syncDatabaseWithRepo(@ValidateStringParam(name = "site") String site, @ValidateStringParam(name = "fromCommitId") String fromCommitId) {
+    public boolean syncDatabaseWithRepo(@ValidateStringParam(name = "site") String site,
+                                        @ValidateStringParam(name = "fromCommitId") String fromCommitId)
+            throws SiteNotFoundException {
+        return syncDatabaseWithRepo(site, fromCommitId, true);
+    }
+
+    @Override
+    @ValidateParams
+    public boolean syncDatabaseWithRepo(@ValidateStringParam(name = "site") String site,
+                                        @ValidateStringParam(name = "fromCommitId") String fromCommitId,
+                                        boolean generateAuditLog) throws SiteNotFoundException {
 		boolean toReturn = true;
-        List<RepoOperationTO> repoOperations = contentRepository.getOperations(site, fromCommitId, contentRepository
-		    .getRepoLastCommitId(site));
+        String repoLastCommitId = contentRepository.getRepoLastCommitId(site);
+        List<RepoOperationTO> repoOperations = contentRepository.getOperations(site, fromCommitId, repoLastCommitId);
         if (CollectionUtils.isEmpty(repoOperations)) {
             logger.debug("Database is up to date with repository for site: " + site);
             contentRepository.markGitLogVerifiedProcessed(site, fromCommitId);
             return toReturn;
         }
 
-        logger.info("Syncing database with repository for site: " + site + " fromCommitId = " + (StringUtils.isEmpty(fromCommitId) ? "Empty repo" : fromCommitId));
+        logger.info("Syncing database with repository for site: " + site + " fromCommitId = " +
+                (StringUtils.isEmpty(fromCommitId) ? "Empty repo" : fromCommitId));
         logger.debug("Operations to sync: ");
 	    for (RepoOperationTO repoOperation: repoOperations) {
 	    	logger.debug("\tOperation: " + repoOperation.getOperation().toString() + " " + repoOperation.getPath());
@@ -796,15 +1299,24 @@ public class SiteServiceImpl implements SiteService {
 
 	    boolean diverged = false;
 	    GitLog current = null;
+	    SiteFeed siteFeed = getSite(site);
+	    boolean isPreviewSyncNeeded = !StringUtils.equals(repoLastCommitId, siteFeed.getLastCommitId());
 
 	    // Process all operations and track if one or more have failed
 	    for (RepoOperationTO repoOperation: repoOperations) {
             boolean gitLogProcessed = false;
+            logger.debug("Verifying repo opertation " + repoOperation.getOperation().toString() + " " +
+                    repoOperation.getPath());
+            logger.debug("Get Git Log from database for commit id " + repoOperation.getCommitId());
             GitLog gitLog = contentRepository.getGitLog(site, repoOperation.getCommitId());
             if (gitLog != null) {
                 diverged = diverged || gitLog.getProcessed() < 1;
             } else {
+                logger.debug("Git Log does not exist in database for commit id " + repoOperation.getCommitId());
+                logger.debug("Inserting Git Log for commit id " + repoOperation.getCommitId() + " and site " + site);
                 contentRepository.insertGitLog(site, repoOperation.getCommitId(), 0);
+                logger.debug("Repository diverged from database. " +
+                        "All repository operations onwards need to be processed");
                 diverged = true;
                 gitLogProcessed = false;
                 gitLog = contentRepository.getGitLog(site, repoOperation.getCommitId());
@@ -829,72 +1341,135 @@ public class SiteServiceImpl implements SiteService {
                         ItemState state = objectStateService.getObjectState(site, repoOperation.getPath(), false);
 
                         if (state == null) {
+                            logger.debug("Insert item state for site: " + site + " path: " + repoOperation.getPath());
                             objectStateService.insertNewEntry(site, repoOperation.getPath());
                         } else {
+                            logger.debug("Set item state for site: " + site + " path: " + repoOperation.getPath());
                             objectStateService.transition(site, repoOperation.getPath(), TransitionEvent.SAVE);
                         }
 
+                        logger.debug("Set item metadata for site: " + site + " path: " + repoOperation.getPath());
                         if (!objectMetadataManager.metadataExist(site, repoOperation.getPath())) {
                             objectMetadataManager.insertNewObjectMetadata(site, repoOperation.getPath());
                         }
                         properties = new HashMap<String, Object>();
                         properties.put(ItemMetadata.PROP_SITE, site);
                         properties.put(ItemMetadata.PROP_PATH, repoOperation.getPath());
+                        properties.put(ItemMetadata.PROP_MODIFIER, repoOperation.getAuthor());
                         properties.put(ItemMetadata.PROP_MODIFIED, repoOperation.getDateTime());
                         properties.put(ItemMetadata.PROP_COMMIT_ID, repoOperation.getCommitId());
                         objectMetadataManager.setObjectMetadata(site, repoOperation.getMoveToPath(), properties);
+                        logger.debug("Extract dependencies for site: " + site + " path: " +
+                                repoOperation.getPath());
                         toReturn = toReturn && extractDependenciesForItem(site, repoOperation.getPath());
                         contentClass = contentService.getContentTypeClass(site, repoOperation.getPath());
                         if (repoOperation.getPath().endsWith(DmConstants.XML_PATTERN)) {
                             activityInfo.put(DmConstants.KEY_CONTENT_TYPE, contentClass);
                         }
-                        activityService.postActivity(site, repoOperation.getAuthor(), repoOperation.getPath(),
-                                ActivityService.ActivityType.CREATED, ActivityService.ActivitySource.REPOSITORY, activityInfo);
+                        if (generateAuditLog) {
+                            logger.debug("Insert audit log for site: " + site + " path: " + repoOperation.getPath());
+                            AuditLog auditLog = auditServiceInternal.createAuditLogEntry();
+                            auditLog.setOperation(OPERATION_CREATE);
+                            auditLog.setSiteId(siteFeed.getId());
+                            auditLog.setActorId(repoOperation.getAuthor());
+                            auditLog.setActorDetails(repoOperation.getAuthor());
+                            auditLog.setPrimaryTargetId(site + ":" + repoOperation.getPath());
+                            auditLog.setPrimaryTargetType(TARGET_TYPE_CONTENT_ITEM);
+                            auditLog.setPrimaryTargetValue(repoOperation.getPath());
+                            auditLog.setPrimaryTargetSubtype(contentService.getContentTypeClass(site,
+                                    repoOperation.getPath()));
+                            auditLog.setOrigin(ORIGIN_GIT);
+                            auditServiceInternal.insertAuditLog(auditLog);
+                        }
                         break;
 
                     case UPDATE:
+                        logger.debug("Set item state for site: " + site + " path: " + repoOperation.getPath());
                         objectStateService.getObjectState(site, repoOperation.getPath());
                         objectStateService.transition(site, repoOperation.getPath(), TransitionEvent.SAVE);
+
+                        logger.debug("Set item metadata for site: " + site + " path: " + repoOperation.getPath());
                         if (!objectMetadataManager.metadataExist(site, repoOperation.getPath())) {
                             objectMetadataManager.insertNewObjectMetadata(site, repoOperation.getPath());
                         }
                         properties = new HashMap<String, Object>();
                         properties.put(ItemMetadata.PROP_SITE, site);
                         properties.put(ItemMetadata.PROP_PATH, repoOperation.getPath());
+                        properties.put(ItemMetadata.PROP_MODIFIER, repoOperation.getAuthor());
                         properties.put(ItemMetadata.PROP_MODIFIED, repoOperation.getDateTime());
                         properties.put(ItemMetadata.PROP_COMMIT_ID, repoOperation.getCommitId());
                         objectMetadataManager.setObjectMetadata(site, repoOperation.getMoveToPath(), properties);
+
+                        logger.debug("Extract dependencies for site: " + site + " path: " + repoOperation.getPath());
                         toReturn = toReturn && extractDependenciesForItem(site, repoOperation.getPath());
                         contentClass = contentService.getContentTypeClass(site, repoOperation.getPath());
                         if (repoOperation.getPath().endsWith(DmConstants.XML_PATTERN)) {
                             activityInfo.put(DmConstants.KEY_CONTENT_TYPE, contentClass);
                         }
-                        activityService.postActivity(site, repoOperation.getAuthor(), repoOperation.getPath(),
-                                ActivityService.ActivityType.UPDATED, ActivityService.ActivitySource.REPOSITORY, activityInfo);
+                        if (generateAuditLog) {
+                            logger.debug("Insert audit log for site: " + site + " path: " + repoOperation.getPath());
+                            AuditLog auditLog = auditServiceInternal.createAuditLogEntry();
+                            auditLog.setOperation(OPERATION_UPDATE);
+                            auditLog.setSiteId(siteFeed.getId());
+                            auditLog.setActorId(repoOperation.getAuthor());
+                            auditLog.setActorDetails(repoOperation.getAuthor());
+                            auditLog.setOrigin(ORIGIN_GIT);
+                            auditLog.setPrimaryTargetId(site + ":" + repoOperation.getPath());
+                            auditLog.setPrimaryTargetType(TARGET_TYPE_CONTENT_ITEM);
+                            auditLog.setPrimaryTargetValue(repoOperation.getPath());
+                            auditLog.setPrimaryTargetSubtype(contentService.getContentTypeClass(site,
+                                    repoOperation.getPath()));
+                            auditServiceInternal.insertAuditLog(auditLog);
+                        }
                         break;
 
                     case DELETE:
+                        logger.debug("Delete item state for site: " + site + " path: " + repoOperation.getPath());
                         objectStateService.deleteObjectStateForPath(site, repoOperation.getPath());
+                        logger.debug("Delete item metadata for site: " + site + " path: " + repoOperation.getPath());
                         objectMetadataManager.deleteObjectMetadata(site, repoOperation.getPath());
-                        dmDependencyService.deleteDependenciesForSiteAndPath(site, repoOperation.getPath());
+                        logger.debug("Extract dependencies for site: " + site + " path: " + repoOperation.getPath());
+                        try {
+                            dependencyService.deleteItemDependencies(site, repoOperation.getPath());
+                        } catch (ServiceLayerException e) {
+                            logger.error("Error deleting dependencies for site " + site + " file: " +
+                                    repoOperation.getPath(), e);
+                        }
                         contentClass = contentService.getContentTypeClass(site, repoOperation.getPath());
                         if (repoOperation.getPath().endsWith(DmConstants.XML_PATTERN)) {
                             activityInfo.put(DmConstants.KEY_CONTENT_TYPE, contentClass);
                         }
-                        activityService.postActivity(site, repoOperation.getAuthor(), repoOperation.getPath(),
-                                ActivityService.ActivityType.DELETED, ActivityService.ActivitySource.REPOSITORY, activityInfo);
+                        if (generateAuditLog) {
+                            logger.debug("Insert audit log for site: " + site + " path: " + repoOperation.getPath());
+                            AuditLog auditLog = auditServiceInternal.createAuditLogEntry();
+                            auditLog.setOperation(OPERATION_DELETE);
+                            auditLog.setSiteId(siteFeed.getId());
+                            auditLog.setOrigin(ORIGIN_GIT);
+                            auditLog.setActorId(repoOperation.getAuthor());
+                            auditLog.setActorDetails(repoOperation.getAuthor());
+                            auditLog.setPrimaryTargetId(site + ":" + repoOperation.getPath());
+                            auditLog.setPrimaryTargetType(TARGET_TYPE_CONTENT_ITEM);
+                            auditLog.setPrimaryTargetValue(repoOperation.getPath());
+                            auditLog.setPrimaryTargetSubtype(contentService.getContentTypeClass(site,
+                                    repoOperation.getPath()));
+                            auditServiceInternal.insertAuditLog(auditLog);
+                        }
                         break;
 
                     case MOVE:
                         ItemState stateRename = objectStateService.getObjectState(site, repoOperation.getPath(), false);
+                        logger.debug("Set item state for site: " + site + " path: " + repoOperation.getMoveToPath());
                         if (stateRename == null) {
-                            objectStateService.getObjectState(site, repoOperation.getPath());
-                            objectStateService.transition(site, repoOperation.getPath(), TransitionEvent.SAVE);
+                            objectStateService.getObjectState(site, repoOperation.getMoveToPath());
+                            objectStateService.transition(site, repoOperation.getMoveToPath(), TransitionEvent.SAVE);
                         } else {
-                            objectStateService.updateObjectPath(site, repoOperation.getPath(), repoOperation.getMoveToPath());
+                            objectStateService.updateObjectPath(site, repoOperation.getPath(),
+                                    repoOperation.getMoveToPath());
                             objectStateService.transition(site, repoOperation.getMoveToPath(), TransitionEvent.SAVE);
                         }
 
+                        logger.debug("Set item metadata for site: " + site + " path: " +
+                                repoOperation.getMoveToPath());
                         if (!objectMetadataManager.metadataExist(site, repoOperation.getPath())) {
                             if (!objectMetadataManager.metadataExist(site, repoOperation.getMoveToPath())) {
                                 objectMetadataManager.insertNewObjectMetadata(site, repoOperation.getMoveToPath());
@@ -907,20 +1482,24 @@ public class SiteServiceImpl implements SiteService {
                                     properties.put(ItemMetadata.PROP_RENAMED, 1);
                                     properties.put(ItemMetadata.PROP_OLD_URL, repoOperation.getPath());
                                     properties.put(ItemMetadata.PROP_COMMIT_ID, repoOperation.getCommitId());
+                                    properties.put(ItemMetadata.PROP_MODIFIER, repoOperation.getAuthor());
                                     properties.put(ItemMetadata.PROP_MODIFIED, repoOperation.getDateTime());
-                                    objectMetadataManager.setObjectMetadata(site, repoOperation.getMoveToPath(), properties);
+                                    objectMetadataManager.setObjectMetadata(site, repoOperation.getMoveToPath(),
+                                            properties);
                                 }
                             }
                         } else {
                             if (!objectMetadataManager.metadataExist(site, repoOperation.getMoveToPath())) {
                                 // preform move: update path, set renamed, set old url
-                                objectMetadataManager.updateObjectPath(site, repoOperation.getPath(), repoOperation.getMoveToPath());
+                                objectMetadataManager.updateObjectPath(site, repoOperation.getPath(),
+                                        repoOperation.getMoveToPath());
                                 properties = new HashMap<String, Object>();
                                 properties.put(ItemMetadata.PROP_SITE, site);
                                 properties.put(ItemMetadata.PROP_PATH, repoOperation.getMoveToPath());
                                 properties.put(ItemMetadata.PROP_RENAMED, 1);
                                 properties.put(ItemMetadata.PROP_OLD_URL, repoOperation.getPath());
                                 properties.put(ItemMetadata.PROP_COMMIT_ID, repoOperation.getCommitId());
+                                properties.put(ItemMetadata.PROP_MODIFIER, repoOperation.getAuthor());
                                 objectMetadataManager.setObjectMetadata(site, repoOperation.getMoveToPath(), properties);
                             } else {
                                 // if not already renamed set renamed and old url
@@ -932,23 +1511,41 @@ public class SiteServiceImpl implements SiteService {
                                     properties.put(ItemMetadata.PROP_RENAMED, 1);
                                     properties.put(ItemMetadata.PROP_OLD_URL, repoOperation.getPath());
                                     properties.put(ItemMetadata.PROP_COMMIT_ID, repoOperation.getCommitId());
-                                    objectMetadataManager.setObjectMetadata(site, repoOperation.getMoveToPath(), properties);
+                                    properties.put(ItemMetadata.PROP_MODIFIER, repoOperation.getAuthor());
+                                    objectMetadataManager.setObjectMetadata(site, repoOperation.getMoveToPath(),
+                                            properties);
                                 }
                                 objectMetadataManager.deleteObjectMetadata(site, repoOperation.getPath());
                             }
                         }
 
+                        logger.debug("Extract dependencies for site: " + site + " path: " + repoOperation.getPath());
                         toReturn = toReturn && extractDependenciesForItem(site, repoOperation.getMoveToPath());
                         contentClass = contentService.getContentTypeClass(site, repoOperation.getMoveToPath());
                         if (repoOperation.getMoveToPath().endsWith(DmConstants.XML_PATTERN)) {
                             activityInfo.put(DmConstants.KEY_CONTENT_TYPE, contentClass);
                         }
-                        activityService.postActivity(site, repoOperation.getAuthor(), repoOperation.getMoveToPath(),
-                                ActivityService.ActivityType.UPDATED, ActivityService.ActivitySource.REPOSITORY, activityInfo);
+                        if (generateAuditLog) {
+                            logger.debug("Insert audit log for site: " + site + " path: " +
+                                    repoOperation.getMoveToPath());
+                            AuditLog auditLog = auditServiceInternal.createAuditLogEntry();
+                            auditLog.setOperation(OPERATION_MOVE);
+                            auditLog.setSiteId(siteFeed.getId());
+                            auditLog.setActorId(repoOperation.getAuthor());
+                            auditLog.setActorDetails(repoOperation.getAuthor());
+                            auditLog.setOrigin(ORIGIN_GIT);
+                            auditLog.setPrimaryTargetId(site + ":" + repoOperation.getMoveToPath());
+                            auditLog.setPrimaryTargetType(TARGET_TYPE_CONTENT_ITEM);
+                            auditLog.setPrimaryTargetValue(repoOperation.getMoveToPath());
+                            auditLog.setPrimaryTargetSubtype(contentService.getContentTypeClass(site,
+                                    repoOperation.getMoveToPath()));
+                            auditServiceInternal.insertAuditLog(auditLog);
+                        }
                         break;
 
                     default:
-                        logger.error("Error: Unknown repo operation for site " + site + " operation: " + repoOperation.getOperation());
+                        logger.error("Error: Unknown repo operation for site " + site + " operation: " +
+                                repoOperation.getOperation());
                         toReturn = false;
                         break;
                 }
@@ -966,16 +1563,21 @@ public class SiteServiceImpl implements SiteService {
 
 	    // Update database
         String lastCommitId = contentRepository.getRepoLastCommitId(site);
+        logger.debug("Update last commit id " + lastCommitId + " for site " + site);
         updateLastCommitId(site, lastCommitId);
         // Sync all preview deployers
-        try {
-            deploymentService.syncAllContentToPreview(site, false);
-        } catch (ServiceException e) {
-            logger.error("Error synchronizing preview with repository for site: " + site, e);
+        if (isPreviewSyncNeeded || diverged) {
+            try {
+                logger.debug("Sync preview for site " + site);
+                deploymentService.syncAllContentToPreview(site, false);
+            } catch (ServiceLayerException e) {
+                logger.error("Error synchronizing preview with repository for site: " + site, e);
+            }
         }
 
-	    logger.info("Done syncing database with repository for site: " + site + " fromCommitId = " + (StringUtils.isEmpty(fromCommitId) ? "Empty repo" : fromCommitId) +
-		    " with a final result of: " + toReturn);
+	    logger.info("Done syncing database with repository for site: " + site + " fromCommitId = " +
+                (StringUtils.isEmpty(fromCommitId) ? "Empty repo" : fromCommitId) + " with a final result of: " +
+                toReturn);
         logger.info("Last commit ID for site: " + site + " is " + lastCommitId);
 
         if (!toReturn) {
@@ -991,7 +1593,6 @@ public class SiteServiceImpl implements SiteService {
 		boolean toReturn = true;
 
 	    try {
-		    InputStream content = contentRepository.getContent(site, path);
 		    if (path.endsWith(DmConstants.XML_PATTERN)) {
 			    SAXReader saxReader = new SAXReader();
 				try {
@@ -1001,26 +1602,18 @@ public class SiteServiceImpl implements SiteService {
 				}catch (SAXException ex){
 					logger.error("Unable to turn off external entity loading, This could be a security risk.", ex);
 				}
-			    Document doc = saxReader.read(content);
 
-			    dmDependencyService.extractDependencies(site, path, doc, new HashMap<>());
+			    dependencyService.upsertDependencies(site, path);
 		    } else {
 			    boolean isCss = path.endsWith(DmConstants.CSS_PATTERN);
 			    boolean isJs = path.endsWith(DmConstants.JS_PATTERN);
 			    boolean isTemplate = ContentUtils.matchesPatterns(path, servicesConfig.getRenderingTemplatePatterns
 				    (site));
 			    if (isCss || isJs || isTemplate) {
-				    StringBuffer sb = new StringBuffer(IOUtils.toString(content));
-				    if (isCss) {
-					    dmDependencyService.extractDependenciesStyle(site, path, sb, new HashMap<>());
-				    } else if (isJs) {
-					    dmDependencyService.extractDependenciesJavascript(site, path, sb, new HashMap<>());
-				    } else if (isTemplate) {
-					    dmDependencyService.extractDependenciesTemplate(site, path, sb, new HashMap<>());
-				    }
+				    dependencyService.upsertDependencies(site, path);
 			    }
 		    }
-	    } catch (DocumentException | ServiceException | IOException e) {
+	    } catch (ServiceLayerException e) {
 		    logger.error("Error extracting dependencies for site " + site + " file: " + path, e);
 		    toReturn = false;
 	    }
@@ -1036,7 +1629,20 @@ public class SiteServiceImpl implements SiteService {
 
     @Override
     @ValidateParams
-    public int getSitesPerUserTotal(@ValidateStringParam(name = "username") String username) throws UserNotFoundException {
+    public boolean existsById(@ValidateStringParam(name = "siteId") String siteId) {
+        return siteFeedMapper.existsById(siteId) > 0;
+    }
+
+    @Override
+    @ValidateParams
+    public boolean existsByName(@ValidateStringParam(name = "siteName") String siteName) {
+        return siteFeedMapper.existsByName(siteName) > 0;
+    }
+
+    @Override
+    @ValidateParams
+    public int getSitesPerUserTotal(@ValidateStringParam(name = "username") String username)
+		throws UserNotFoundException, ServiceLayerException {
 	    if (securityService.userExists(username)) {
             Map<String, Object> params = new HashMap<String, Object>();
             params.put("username", username);
@@ -1048,7 +1654,10 @@ public class SiteServiceImpl implements SiteService {
 
     @Override
     @ValidateParams
-    public List<SiteFeed> getSitesPerUser(@ValidateStringParam(name = "username") String username, @ValidateIntegerParam(name = "start") int start, @ValidateIntegerParam(name = "number") int number) throws UserNotFoundException {
+    public List<SiteFeed> getSitesPerUser(@ValidateStringParam(name = "username") String username,
+                                          @ValidateIntegerParam(name = "start") int start,
+                                          @ValidateIntegerParam(name = "number") int number)
+		throws UserNotFoundException, ServiceLayerException {
         if (securityService.userExists(username)) {
             Map<String, Object> params = new HashMap<String, Object>();
             params.put("username", username);
@@ -1093,7 +1702,8 @@ public class SiteServiceImpl implements SiteService {
 
     @Override
     @ValidateParams
-    public boolean enablePublishing(@ValidateStringParam(name = "siteId") String siteId, boolean enabled) throws SiteNotFoundException {
+    public boolean enablePublishing(@ValidateStringParam(name = "siteId") String siteId, boolean enabled)
+            throws SiteNotFoundException {
         if (exists(siteId)) {
             Map<String, Object> params = new HashMap<String, Object>();
             params.put("siteId", siteId);
@@ -1107,7 +1717,9 @@ public class SiteServiceImpl implements SiteService {
 
     @Override
     @ValidateParams
-    public boolean updatePublishingStatusMessage(@ValidateStringParam(name = "siteId") String siteId, @ValidateStringParam(name = "message") String message) throws SiteNotFoundException {
+    public boolean updatePublishingStatusMessage(@ValidateStringParam(name = "siteId") String siteId,
+                                                 @ValidateStringParam(name = "message") String message)
+            throws SiteNotFoundException {
         if (exists(siteId)) {
             Map<String, Object> params = new HashMap<String, Object>();
             params.put("siteId", siteId);
@@ -1121,7 +1733,8 @@ public class SiteServiceImpl implements SiteService {
 
     @Override
     @ValidateParams
-    public PublishStatus getPublishStatus(@ValidateStringParam(name = "site") String site) throws SiteNotFoundException {
+    public PublishStatus getPublishStatus(@ValidateStringParam(name = "site") String site)
+            throws SiteNotFoundException {
         SiteFeed siteFeed = getSite(site);
         String psm = siteFeed.getPublishingStatusMessage();
         PublishStatus ps = new PublishStatus();
@@ -1146,6 +1759,78 @@ public class SiteServiceImpl implements SiteService {
         return ps;
     }
 
+    @Override
+    public boolean addRemote(String siteId, String remoteName, String remoteUrl,
+                             String authenticationType, String remoteUsername, String remotePassword,
+                             String remoteToken, String remotePrivateKey)
+            throws InvalidRemoteUrlException, ServiceLayerException {
+        if (!exists(siteId)) {
+            throw new SiteNotFoundException();
+        }
+        boolean toRet = contentRepository.addRemote(siteId, remoteName, remoteUrl, authenticationType, remoteUsername,
+                remotePassword, remoteToken, remotePrivateKey);
+        insertAddRemoteAuditLog(siteId, remoteName);
+        return toRet;
+    }
+
+    private void insertAddRemoteAuditLog(String siteId, String remoteName) throws SiteNotFoundException {
+	    SiteFeed siteFeed = getSite(siteId);
+        String user = securityService.getCurrentUser();
+        AuditLog auditLog = auditServiceInternal.createAuditLogEntry();
+        auditLog.setOperation(OPERATION_ADD_REMOTE);
+        auditLog.setSiteId(siteFeed.getId());
+        auditLog.setActorId(user);
+        auditLog.setPrimaryTargetId(remoteName);
+        auditLog.setPrimaryTargetType(TARGET_TYPE_REMOTE_REPOSITORY);
+        auditLog.setPrimaryTargetValue(remoteName);
+        auditServiceInternal.insertAuditLog(auditLog);
+    }
+
+    @Override
+    public boolean removeRemote(String siteId, String remoteName) throws SiteNotFoundException {
+        if (!exists(siteId)) {
+            throw new SiteNotFoundException();
+        }
+        boolean toRet = contentRepository.removeRemote(siteId, remoteName);
+        insertRemoveRemoteAuditLog(siteId, remoteName);
+        return toRet;
+    }
+
+    private void insertRemoveRemoteAuditLog(String siteId, String remoteName) throws SiteNotFoundException {
+	    SiteFeed siteFeed = getSite(siteId);
+        String user = securityService.getCurrentUser();
+        AuditLog auditLog = auditServiceInternal.createAuditLogEntry();
+        auditLog.setOperation(OPERATION_REMOVE_REMOTE);
+        auditLog.setActorId(user);
+        auditLog.setSiteId(siteFeed.getId());
+        auditLog.setPrimaryTargetId(remoteName);
+        auditLog.setPrimaryTargetType(TARGET_TYPE_REMOTE_REPOSITORY);
+        auditLog.setPrimaryTargetValue(remoteName);
+        auditServiceInternal.insertAuditLog(auditLog);
+    }
+
+    @Override
+    public List<RemoteRepositoryInfoTO> listRemote(String siteId) throws ServiceLayerException {
+        if (!exists(siteId)) {
+            throw new SiteNotFoundException();
+        }
+        SiteFeed siteFeed = getSite(siteId);
+        return contentRepository.listRemote(siteId, siteFeed.getSandboxBranch());
+    }
+
+    @Override
+    public List<SiteFeed> getDeletedSites() {
+        return siteFeedMapper.getDeletedSites();
+    }
+
+    private void addSiteUuidFile(String site, String siteUuid) throws IOException {
+        Path path = Paths.get(studioConfiguration.getProperty(StudioConfiguration.REPO_BASE_PATH),
+                studioConfiguration.getProperty(StudioConfiguration.SITES_REPOS_PATH), site,
+                StudioConstants.SITE_UUID_FILENAME);
+        String toWrite = StudioConstants.SITE_UUID_FILE_COMMENT + "\n" + siteUuid;
+        Files.write(path, toWrite.getBytes());
+    }
+
     public String getGlobalConfigRoot() {
         return studioConfiguration.getProperty(CONFIGURATION_GLOBAL_CONFIG_BASE_PATH);
     }
@@ -1158,120 +1843,199 @@ public class SiteServiceImpl implements SiteService {
         return studioConfiguration.getProperty(CONFIGURATION_SITE_ENVIRONMENT);
     }
 
-    public String getEnvironmentConfigPath() {
-        return studioConfiguration.getProperty(CONFIGURATION_SITE_ENVIRONMENT_CONFIG_BASE_PATH);
-    }
-
     public List<String> getDefaultGroups() {
-        return Arrays.asList(studioConfiguration.getProperty(CONFIGURATION_SITE_DEFAULT_GROUPS).split(","));
+        return Arrays.asList(studioConfiguration.getProperty(CONFIGURATION_DEFAULT_GROUPS).split(","));
     }
 
     public String getDefaultAdminGroup() {
-	    return studioConfiguration.getProperty(CONFIGURATION_SITE_DEFAULT_ADMIN_GROUP);
+	    return studioConfiguration.getProperty(CONFIGURATION_DEFAULT_ADMIN_GROUP);
     }
 
     /** getter site service dal */
-	public SiteServiceDAL getSiteService() { return _siteServiceDAL; }
+	public SiteServiceDAL getSiteService() {
+	    return _siteServiceDAL;
+	}
 	/** setter site service dal */
-	public void setSiteServiceDAL(SiteServiceDAL service) { _siteServiceDAL = service; }
+	public void setSiteServiceDAL(SiteServiceDAL service) {
+	    _siteServiceDAL = service;
+	}
 
-	public ServicesConfig getServicesConfig() { return servicesConfig; }
-	public void setServicesConfig(ServicesConfig servicesConfig) { this.servicesConfig = servicesConfig; }
+	public ServicesConfig getServicesConfig() {
+	    return servicesConfig;
+	}
+	public void setServicesConfig(ServicesConfig servicesConfig) {
+	    this.servicesConfig = servicesConfig;
+	}
 
-	public ContentService getContentService() { return contentService; }
-	public void setContentService(ContentService contentService) { this.contentService = contentService; }
+	public ContentService getContentService() {
+	    return contentService;
+	}
+	public void setContentService(ContentService contentService) {
+	    this.contentService = contentService;
+	}
 
-	public SiteEnvironmentConfig getEnvironmentConfig() { return environmentConfig; }
-	public void setEnvironmentConfig(SiteEnvironmentConfig environmentConfig) { this.environmentConfig = environmentConfig; }
+	public SiteEnvironmentConfig getEnvironmentConfig() {
+	    return environmentConfig;
+	}
+	public void setEnvironmentConfig(SiteEnvironmentConfig environmentConfig) {
+	    this.environmentConfig = environmentConfig;
+	}
 
-	public ContentRepository getContenetRepository() { return contentRepository; }
-	public void setContentRepository(ContentRepository repo) { contentRepository = repo; }
+	public ContentRepository getContenetRepository() {
+	    return contentRepository;
+	}
+	public void setContentRepository(ContentRepository repo) {
+	    contentRepository = repo;
+	}
 
-	public ObjectStateService getObjectStateService() { return objectStateService; }
-	public void setObjectStateService(ObjectStateService objectStateService) { this.objectStateService = objectStateService; }
+	public ObjectStateService getObjectStateService() {
+	    return objectStateService;
+	}
+	public void setObjectStateService(ObjectStateService objectStateService) {
+	    this.objectStateService = objectStateService;
+	}
 
-	public DmDependencyService getDmDependencyService() { return dmDependencyService; }
-	public void setDmDependencyService(DmDependencyService dmDependencyService) { this.dmDependencyService = dmDependencyService; }
+	public DependencyService getDependencyService() {
+	    return dependencyService;
+	}
+	public void setDependencyService(DependencyService dependencyService) {
+	    this.dependencyService = dependencyService;
+	}
 
-	public SecurityService getSecurityService() { return securityService; }
-	public void setSecurityService(SecurityService securityService) { this.securityService = securityService; }
+	public SecurityService getSecurityService() {
+	    return securityService;
+	}
+	public void setSecurityService(SecurityService securityService) {
+	    this.securityService = securityService;
+	}
 
-	public ActivityService getActivityService() { return activityService; }
-	public void setActivityService(ActivityService activityService) { this.activityService = activityService; }
+	public DeploymentService getDeploymentService() {
+	    return deploymentService;
+	}
+	public void setDeploymentService(DeploymentService deploymentService) {
+	    this.deploymentService = deploymentService;
+	}
 
-	public DeploymentService getDeploymentService() { return deploymentService; }
-	public void setDeploymentService(DeploymentService deploymentService) { this.deploymentService = deploymentService; }
+    public ObjectMetadataManager getObjectMetadataManager() {
+	    return objectMetadataManager;
+	}
+    public void setObjectMetadataManager(ObjectMetadataManager objectMetadataManager) {
+	    this.objectMetadataManager = objectMetadataManager;
+	}
 
-    public ObjectMetadataManager getObjectMetadataManager() { return objectMetadataManager; }
-    public void setObjectMetadataManager(ObjectMetadataManager objectMetadataManager) { this.objectMetadataManager = objectMetadataManager; }
+    public DmPageNavigationOrderService getDmPageNavigationOrderService() {
+	    return dmPageNavigationOrderService;
+	}
+    public void setDmPageNavigationOrderService(DmPageNavigationOrderService dmPageNavigationOrderService) {
+	    this.dmPageNavigationOrderService = dmPageNavigationOrderService;
+	}
 
-    public DmPageNavigationOrderService getDmPageNavigationOrderService() { return dmPageNavigationOrderService; }
-    public void setDmPageNavigationOrderService(DmPageNavigationOrderService dmPageNavigationOrderService) { this.dmPageNavigationOrderService = dmPageNavigationOrderService; }
+    public ContentTypeService getContentTypeService() {
+	    return contentTypeService;
+	}
+    public void setContentTypeService(ContentTypeService contentTypeService) {
+	    this.contentTypeService = contentTypeService;
+	}
 
-    public ContentTypeService getContentTypeService() { return contentTypeService; }
-    public void setContentTypeService(ContentTypeService contentTypeService) { this.contentTypeService = contentTypeService; }
-
-    public SecurityProvider getSecurityProvider() { return securityProvider; }
-    public void setSecurityProvider(SecurityProvider securityProvider) { this.securityProvider = securityProvider; }
-
-    public ImportService getImportService() { return importService; }
-    public void setImportService(ImportService importService) { this.importService = importService; }
+    public ImportService getImportService() {
+	    return importService;
+	}
+    public void setImportService(ImportService importService) {
+	    this.importService = importService;
+	}
 
 	public void setNotificationService(final NotificationService notificationService) {
 		this.notificationService = notificationService;
 	}
 
-    public GeneralLockService getGeneralLockService() { return generalLockService; }
-    public void setGeneralLockService(GeneralLockService generalLockService) { this.generalLockService = generalLockService; }
-
-    public RebuildRepositoryMetadata getRebuildRepositoryMetadata() { return rebuildRepositoryMetadata; }
-    public void setRebuildRepositoryMetadata(RebuildRepositoryMetadata rebuildRepositoryMetadata) { this.rebuildRepositoryMetadata = rebuildRepositoryMetadata; }
-
-    public SyncDatabaseWithRepository getSyncDatabaseWithRepository() { return syncDatabaseWithRepository; }
-    public void setSyncDatabaseWithRepository(SyncDatabaseWithRepository syncDatabaseWithRepository) { this.syncDatabaseWithRepository = syncDatabaseWithRepository; }
-
-    public StudioConfiguration getStudioConfiguration() { return studioConfiguration; }
-    public void setStudioConfiguration(StudioConfiguration studioConfiguration) { this.studioConfiguration = studioConfiguration; }
-
-    public void setSearchService(SearchService searchService) { this.searchService = searchService; }
-
-    public EventService getEventService() { return eventService; }
-    public void setEventService(EventService eventService) { this.eventService = eventService; }
-
-	public PreviewDeployer getPreviewDeployer() {
-		return previewDeployer;
+    public GeneralLockService getGeneralLockService() {
+	    return generalLockService;
+	}
+    public void setGeneralLockService(GeneralLockService generalLockService) {
+	    this.generalLockService = generalLockService;
 	}
 
-	public void setPreviewDeployer(final PreviewDeployer previewDeployer) {
-		this.previewDeployer = previewDeployer;
+    public RebuildRepositoryMetadata getRebuildRepositoryMetadata() {
+	    return rebuildRepositoryMetadata;
+	}
+    public void setRebuildRepositoryMetadata(RebuildRepositoryMetadata rebuildRepositoryMetadata) {
+	    this.rebuildRepositoryMetadata = rebuildRepositoryMetadata;
 	}
 
-	protected PreviewDeployer previewDeployer;
-    protected SiteServiceDAL _siteServiceDAL;
-	protected ServicesConfig servicesConfig;
-	protected ContentService contentService;
-	protected SiteEnvironmentConfig environmentConfig;
-	protected ContentRepository contentRepository;
-	protected ObjectStateService objectStateService;
-	protected DmDependencyService dmDependencyService;
-	protected SecurityService securityService;
-	protected ActivityService activityService;
-	protected DeploymentService deploymentService;
-    protected ObjectMetadataManager objectMetadataManager;
-    protected DmPageNavigationOrderService dmPageNavigationOrderService;
-    protected ContentTypeService contentTypeService;
-    protected SecurityProvider securityProvider;
-    protected ImportService importService;
-	protected NotificationService notificationService;
-    protected GeneralLockService generalLockService;
-    protected RebuildRepositoryMetadata rebuildRepositoryMetadata;
-    protected SyncDatabaseWithRepository syncDatabaseWithRepository;
-    protected EventService eventService;
+    public SyncDatabaseWithRepository getSyncDatabaseWithRepository() {
+	    return syncDatabaseWithRepository;
+	}
+    public void setSyncDatabaseWithRepository(SyncDatabaseWithRepository syncDatabaseWithRepository) {
+	    this.syncDatabaseWithRepository = syncDatabaseWithRepository;
+	}
 
-    protected StudioConfiguration studioConfiguration;
+    public StudioConfiguration getStudioConfiguration() {
+	    return studioConfiguration;
+	}
+    public void setStudioConfiguration(StudioConfiguration studioConfiguration) {
+	    this.studioConfiguration = studioConfiguration;
+	}
 
-	@Autowired
-	protected SiteFeedMapper siteFeedMapper;
+    public EventService getEventService() {
+	    return eventService;
+	}
+    public void setEventService(EventService eventService) {
+	    this.eventService = eventService;
+	}
 
-	protected SearchService searchService;
+    public Deployer getDeployer() {
+        return deployer;
+    }
+
+    public void setDeployer(Deployer deployer) {
+        this.deployer = deployer;
+    }
+
+    public void setEntitlementValidator(final EntitlementValidator entitlementValidator) {
+		this.entitlementValidator = entitlementValidator;
+	}
+
+    public GroupServiceInternal getGroupServiceInternal() {
+        return groupServiceInternal;
+    }
+
+    public void setGroupServiceInternal(GroupServiceInternal groupServiceInternal) {
+        this.groupServiceInternal = groupServiceInternal;
+    }
+
+    public UserServiceInternal getUserServiceInternal() {
+        return userServiceInternal;
+    }
+
+    public void setUserServiceInternal(UserServiceInternal userServiceInternal) {
+        this.userServiceInternal = userServiceInternal;
+    }
+
+	public void setUpgradeManager(final UpgradeManager upgradeManager) {
+		this.upgradeManager = upgradeManager;
+	}
+
+    public SitesServiceInternal getSitesServiceInternal() {
+        return sitesServiceInternal;
+    }
+
+    public void setSitesServiceInternal(SitesServiceInternal sitesServiceInternal) {
+        this.sitesServiceInternal = sitesServiceInternal;
+    }
+
+    public AuditServiceInternal getAuditServiceInternal() {
+        return auditServiceInternal;
+    }
+
+    public void setAuditServiceInternal(AuditServiceInternal auditServiceInternal) {
+        this.auditServiceInternal = auditServiceInternal;
+    }
+
+    public ConfigurationService getConfigurationService() {
+        return configurationService;
+    }
+
+    public void setConfigurationService(ConfigurationService configurationService) {
+        this.configurationService = configurationService;
+    }
 }

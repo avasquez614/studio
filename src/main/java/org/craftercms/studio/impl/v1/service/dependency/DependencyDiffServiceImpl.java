@@ -1,6 +1,5 @@
 /*
- * Crafter Studio Web-content authoring solution
- * Copyright (C) 2007-2017 Crafter Software Corporation.
+ * Copyright (C) 2007-2019 Crafter Software Corporation. All Rights Reserved.
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -19,30 +18,31 @@
 package org.craftercms.studio.impl.v1.service.dependency;
 
 import org.apache.commons.lang.StringUtils;
-import org.craftercms.studio.api.v1.exception.ServiceException;
+import org.craftercms.studio.api.v1.exception.ServiceLayerException;
 import org.craftercms.studio.api.v1.service.dependency.DependencyDiffService;
-import org.craftercms.studio.api.v1.service.dependency.DmDependencyService;
+import org.craftercms.studio.api.v1.service.dependency.DependencyService;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 
 public class DependencyDiffServiceImpl implements DependencyDiffService {
 
-    protected DmDependencyService dependencyService;
+    protected DependencyService dependencyService;
 
-    public DmDependencyService getDependencyService() { return dependencyService; }
-    public void setDependencyService(DmDependencyService dependencyService) { this.dependencyService = dependencyService; }
+    public DependencyService getDependencyService() { return dependencyService; }
+    public void setDependencyService(DependencyService dependencyService) { this.dependencyService = dependencyService; }
 
     /**
      * Computes addedDependenices and removedDependenices based on the DiffRequest information provided
      * @param diffRequest
-     * @return
-     * @throws ServiceException
+     * @return diff response object
+     * @throws ServiceLayerException
      */
-    public DiffResponse diff(DiffRequest diffRequest) throws ServiceException {
+    public DiffResponse diff(DiffRequest diffRequest) throws ServiceLayerException {
 
         if(diffRequest == null)
-            throw new ServiceException("diffcontext cannot be null");
+            throw new ServiceLayerException("diffcontext cannot be null");
 
         DiffResponse response = new DiffResponse();
         boolean recursive = diffRequest.isRecursive();
@@ -74,8 +74,9 @@ public class DependencyDiffServiceImpl implements DependencyDiffService {
         return response;
     }
 
-    protected List<String> findDependencies(String site, String sandbox, String relativePath, boolean isRecursive, List<String> dependencies) throws ServiceException{
-        List<String> dependenciesFromDoc = dependencyService.getDependencyPaths(site, relativePath);
+    protected List<String> findDependencies(String site, String sandbox, String relativePath, boolean isRecursive,
+                                            List<String> dependencies) throws ServiceLayerException {
+        Set<String> dependenciesFromDoc = dependencyService.getItemDependencies(site, relativePath, 1);
         dependencies.addAll(dependenciesFromDoc);
         if(isRecursive){
             for(String dependency:dependenciesFromDoc){

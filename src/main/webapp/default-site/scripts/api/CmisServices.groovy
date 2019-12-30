@@ -1,6 +1,5 @@
 /*
- * Crafter Studio Web-content authoring solution
- * Copyright (C) 2007-2017 Crafter Software Corporation.
+ * Copyright (C) 2007-2019 Crafter Software Corporation. All Rights Reserved.
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -60,5 +59,10 @@ class CmisServices {
     static cloneContent(context, siteId, cmisRepoId, cmisPath, studioPath) {
         def cmisServiceImpl = ServiceFactory.getCmisServices(context)
         return cmisServiceImpl.cloneContent(siteId, cmisRepoId, cmisPath, studioPath)
+    }
+
+    static uploadContent(context, siteId, cmisRepoId, cmisPath, filename, content) {
+        def cmisServiceImpl = ServiceFactory.getCmisServices(context)
+        return cmisServiceImpl.uploadContent(siteId, cmisRepoId, cmisPath, filename, content)
     }
 }

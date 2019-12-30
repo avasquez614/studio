@@ -1,6 +1,5 @@
 /*
- * Crafter Studio Web-content authoring solution
- * Copyright (C) 2007-2016 Crafter Software Corporation.
+ * Copyright (C) 2007-2019 Crafter Software Corporation. All Rights Reserved.
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -14,30 +13,28 @@
  *
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
- *
  */
 
 package org.craftercms.studio.impl.v1.repository.job;
 
 import org.craftercms.studio.api.v1.dal.PublishRequestMapper;
+import org.craftercms.studio.api.v1.exception.SiteNotFoundException;
 import org.craftercms.studio.api.v1.job.CronJobContext;
 import org.craftercms.studio.api.v1.log.Logger;
 import org.craftercms.studio.api.v1.log.LoggerFactory;
 import org.craftercms.studio.api.v1.repository.ContentRepository;
 import org.craftercms.studio.api.v1.service.content.ContentService;
 import org.craftercms.studio.api.v1.service.content.ObjectMetadataManager;
-import org.craftercms.studio.api.v1.service.dependency.DmDependencyService;
+import org.craftercms.studio.api.v1.service.dependency.DependencyService;
 import org.craftercms.studio.api.v1.service.objectstate.ObjectStateService;
 import org.craftercms.studio.api.v1.service.security.SecurityService;
 import org.craftercms.studio.api.v1.service.site.SiteService;
-import org.craftercms.studio.api.v1.util.StudioConfiguration;
-import org.springframework.beans.factory.annotation.Autowired;
+import org.craftercms.studio.api.v2.utils.StudioConfiguration;
 import org.springframework.core.task.TaskExecutor;
 
-import java.util.*;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.concurrent.locks.ReentrantLock;
-
-import static org.craftercms.studio.api.v1.util.StudioConfiguration.REPO_REBUILD_METADATA_BATCH_SIZE;
 
 public class RebuildRepositoryMetadata {
 
@@ -45,12 +42,10 @@ public class RebuildRepositoryMetadata {
 
     private static ReentrantLock taskLock = new ReentrantLock();
 
-    @Autowired
     protected PublishRequestMapper publishRequestMapper;
-
     protected ObjectMetadataManager objectMetadataManager;
     protected ObjectStateService objectStateService;
-    protected DmDependencyService dmDependencyService;
+    protected DependencyService dependencyService;
     protected ContentService contentService;
     protected SecurityService securityService;
     protected TaskExecutor taskExecutor;
@@ -89,7 +84,11 @@ public class RebuildRepositoryMetadata {
             logger.debug("Cleaning existing repository metadata for site " + site);
             cleanOldMetadata(site);
             logger.debug("Initiate rebuild metadata process for site " + site);
-            rebuildMetadata(site);
+            try {
+                rebuildMetadata(site);
+            } catch (SiteNotFoundException e) {
+                logger.error("Error while rebuilding metadata", e);
+            }
             CronJobContext.clear();
             logger.debug("Finished rebuilding repository metadata for site " + site);
         }
@@ -103,7 +102,7 @@ public class RebuildRepositoryMetadata {
         try {
             // Delete all dependencies
             logger.debug("Deleting dependencies for site " + site);
-            dmDependencyService.deleteDependenciesForSite(site);
+            dependencyService.deleteSiteDependencies(site);
         } catch (Exception error) {
             logger.error("Failed to delete dependencies for site " + site);
         }
@@ -132,44 +131,99 @@ public class RebuildRepositoryMetadata {
             logger.error("Failed to delete workflow states data for site " + site);
         }
 
+        try {
+            logger.debug("Deleting git log data for site " + site);
+            contentRepository.deleteGitLogForSite(site);
+        } catch (Exception error) {
+            logger.error("Failed to delete git log data for site " + site);
+        }
+
         return true;
     }
 
 
-    protected boolean rebuildMetadata(String site) {
+    protected boolean rebuildMetadata(String site) throws SiteNotFoundException {
         siteService.syncDatabaseWithRepo(site, null);
         return true;
     }
 
-    public int getBatchSize() {
-        int toReturn = Integer.parseInt(studioConfiguration.getProperty(REPO_REBUILD_METADATA_BATCH_SIZE));
-        return toReturn;
+    public ObjectMetadataManager getObjectMetadataManager() {
+        return objectMetadataManager;
     }
 
-    public ObjectMetadataManager getObjectMetadataManager() { return objectMetadataManager; }
-    public void setObjectMetadataManager(ObjectMetadataManager objectMetadataManager) { this.objectMetadataManager = objectMetadataManager; }
+    public void setObjectMetadataManager(ObjectMetadataManager objectMetadataManager) {
+        this.objectMetadataManager = objectMetadataManager;
+    }
 
-    public ObjectStateService getObjectStateService() { return objectStateService; }
-    public void setObjectStateService(ObjectStateService objectStateService) { this.objectStateService = objectStateService; }
+    public ObjectStateService getObjectStateService() {
+        return objectStateService;
+    }
 
-    public DmDependencyService getDmDependencyService() { return dmDependencyService; }
-    public void setDmDependencyService(DmDependencyService dmDependencyService) { this.dmDependencyService = dmDependencyService; }
+    public void setObjectStateService(ObjectStateService objectStateService) {
+        this.objectStateService = objectStateService;
+    }
 
-    public ContentService getContentService() { return contentService; }
-    public void setContentService(ContentService contentService) { this.contentService = contentService; }
+    public DependencyService getDependencyService() {
+        return dependencyService;
+    }
 
-    public SecurityService getSecurityService() { return securityService; }
-    public void setSecurityService(SecurityService securityService) { this.securityService = securityService; }
+    public void setDependencyService(DependencyService dependencyService) {
+        this.dependencyService = dependencyService;
+    }
 
-    public TaskExecutor getTaskExecutor() { return taskExecutor; }
-    public void setTaskExecutor(TaskExecutor taskExecutor) { this.taskExecutor = taskExecutor; }
+    public ContentService getContentService() {
+        return contentService;
+    }
 
-    public StudioConfiguration getStudioConfiguration() { return studioConfiguration; }
-    public void setStudioConfiguration(StudioConfiguration studioConfiguration) { this.studioConfiguration = studioConfiguration; }
+    public void setContentService(ContentService contentService) {
+        this.contentService = contentService;
+    }
 
-    public SiteService getSiteService() { return siteService; }
-    public void setSiteService(SiteService siteService) { this.siteService = siteService; }
+    public SecurityService getSecurityService() {
+        return securityService;
+    }
 
-    public ContentRepository getContentRepository() { return contentRepository; }
-    public void setContentRepository(ContentRepository contentRepository) { this.contentRepository = contentRepository; }
+    public void setSecurityService(SecurityService securityService) {
+        this.securityService = securityService;
+    }
+
+    public TaskExecutor getTaskExecutor() {
+        return taskExecutor;
+    }
+
+    public void setTaskExecutor(TaskExecutor taskExecutor) {
+        this.taskExecutor = taskExecutor;
+    }
+
+    public StudioConfiguration getStudioConfiguration() {
+        return studioConfiguration;
+    }
+
+    public void setStudioConfiguration(StudioConfiguration studioConfiguration) {
+        this.studioConfiguration = studioConfiguration;
+    }
+
+    public SiteService getSiteService() {
+        return siteService;
+    }
+
+    public void setSiteService(SiteService siteService) {
+        this.siteService = siteService;
+    }
+
+    public ContentRepository getContentRepository() {
+        return contentRepository;
+    }
+
+    public void setContentRepository(ContentRepository contentRepository) {
+        this.contentRepository = contentRepository;
+    }
+
+    public PublishRequestMapper getPublishRequestMapper() {
+        return publishRequestMapper;
+    }
+
+    public void setPublishRequestMapper(PublishRequestMapper publishRequestMapper) {
+        this.publishRequestMapper = publishRequestMapper;
+    }
 }

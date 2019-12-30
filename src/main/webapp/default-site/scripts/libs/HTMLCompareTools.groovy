@@ -1,3 +1,20 @@
+/*
+ * Copyright (C) 2007-2019 Crafter Software Corporation. All Rights Reserved.
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ */
+
 package scripts.libs
 
 import org.apache.commons.io.IOUtils
@@ -21,9 +38,12 @@ import org.apache.commons.lang3.StringEscapeUtils
 
 
 class HTMLCompareTools {
+
+	static DEFAULT_FACTORY_CLASS = "com.sun.org.apache.xalan.internal.xsltc.trax.TransformerFactoryImpl"
+
 	static CONTENT_XML_TO_HTML_XSL =
 			"<xsl:stylesheet version=\"1.0\" xmlns:xsl=\"http://www.w3.org/1999/XSL/Transform\" xmlns:fo=\"http://www.w3.org/1999/XSL/Format\">"+
-					"<xsl:template match=\"//\">" +
+					"<xsl:template match=\"/\">" +
 					"<html><body><table>"+
 					"<xsl:apply-templates/>" +
 					"</table></body></html>" +
@@ -47,7 +67,7 @@ class HTMLCompareTools {
 
 	static String xmlToHtml(InputStream xml) {
 		try {
-			SAXTransformerFactory tf = TransformerFactory.newInstance()
+			SAXTransformerFactory tf = TransformerFactory.newInstance(DEFAULT_FACTORY_CLASS, null)
 			tf.setFeature(XMLConstants.FEATURE_SECURE_PROCESSING, true);
 			StreamSource xslSource = new StreamSource(IOUtils.toInputStream(HTMLCompareTools.CONTENT_XML_TO_HTML_XSL))
 			Transformer transformer = tf.newTransformer(xslSource)
@@ -95,7 +115,7 @@ class HTMLCompareTools {
 
 	static String diff(InputStream html1, InputStream html2) {
 		try {
-			SAXTransformerFactory tf =  TransformerFactory.newInstance();
+			SAXTransformerFactory tf =  TransformerFactory.newInstance(DEFAULT_FACTORY_CLASS, null);
 			tf.setFeature(XMLConstants.FEATURE_SECURE_PROCESSING, true);
 			TransformerHandler result = tf.newTransformerHandler()
 			StringWriter resultWriter = new StringWriter()

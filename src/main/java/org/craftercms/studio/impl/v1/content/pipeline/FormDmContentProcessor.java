@@ -1,6 +1,5 @@
 /*
- * Crafter Studio Web-content authoring solution
- * Copyright (C) 2007-2016 Crafter Software Corporation.
+ * Copyright (C) 2007-2019 Crafter Software Corporation. All Rights Reserved.
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -25,15 +24,14 @@ import org.craftercms.studio.api.v1.content.pipeline.PipelineContent;
 import org.craftercms.studio.api.v1.dal.ItemMetadata;
 import org.craftercms.studio.api.v1.exception.ContentNotFoundException;
 import org.craftercms.studio.api.v1.exception.ContentProcessException;
-import org.craftercms.studio.api.v1.exception.ServiceException;
+import org.craftercms.studio.api.v1.exception.ServiceLayerException;
+import org.craftercms.studio.api.v1.exception.SiteNotFoundException;
 import org.craftercms.studio.api.v1.log.Logger;
 import org.craftercms.studio.api.v1.log.LoggerFactory;
 import org.craftercms.studio.api.v1.repository.ContentRepository;
-import org.craftercms.studio.api.v1.service.activity.ActivityService;
 import org.craftercms.studio.api.v1.service.configuration.ServicesConfig;
 import org.craftercms.studio.api.v1.service.content.ContentService;
 import org.craftercms.studio.api.v1.service.content.ObjectMetadataManager;
-import org.craftercms.studio.api.v1.service.dependency.DmDependencyService;
 import org.craftercms.studio.api.v1.service.workflow.WorkflowService;
 import org.craftercms.studio.api.v1.to.ContentItemTO;
 import org.craftercms.studio.api.v1.to.ResultTO;
@@ -48,6 +46,8 @@ import java.util.List;
 import java.util.Map;
 
 import static org.craftercms.studio.api.v1.constant.StudioConstants.FILE_SEPARATOR;
+import static org.craftercms.studio.api.v2.dal.AuditLogConstants.OPERATION_CREATE;
+import static org.craftercms.studio.api.v2.dal.AuditLogConstants.OPERATION_UPDATE;
 
 public class FormDmContentProcessor extends PathMatchProcessor implements DmContentProcessor {
 
@@ -75,7 +75,7 @@ public class FormDmContentProcessor extends PathMatchProcessor implements DmCont
     public void process(PipelineContent content, ResultTO result) throws ContentProcessException {
         try {
             writeContent(content, result);
-        } catch (ServiceException e) {
+        } catch (ServiceLayerException e) {
             logger.error("Failed to write " + content.getId(),e);
             throw new ContentProcessException("Failed to write " + content.getId(), e);
         } finally {
@@ -83,7 +83,7 @@ public class FormDmContentProcessor extends PathMatchProcessor implements DmCont
         }
     }
 
-    protected void writeContent(PipelineContent content, ResultTO result) throws ServiceException {
+    protected void writeContent(PipelineContent content, ResultTO result) throws ServiceLayerException {
         String user = content.getProperty(DmConstants.KEY_USER);
         String site = content.getProperty(DmConstants.KEY_SITE);
         String path = content.getProperty(DmConstants.KEY_PATH);
@@ -116,23 +116,8 @@ public class FormDmContentProcessor extends PathMatchProcessor implements DmCont
                     ContentItemTO item = contentService.getContentItem(site, path, 0);
                     InputStream existingContent = contentService.getContent(site, path);
 
-                    String existingMd5 = ContentUtils.getMd5ForFile(existingContent);
-                    String newMd5 = ContentUtils.getMd5ForFile(input);
-                    if (!existingMd5.equals(newMd5)) {
-                        updateFile(site, item, path, input, user, isPreview, unlock, result);
-                        content.addProperty(DmConstants.KEY_ACTIVITY_TYPE, ActivityService.ActivityType.UPDATED.toString());
-                    } else {
-                        updateLastEditedProperties(site, item.getUri(), user);
-                        if (!isPreview) {
-                            if (cancelWorkflow(site, path)) {
-                                workflowService.removeFromWorkflow(site, path, true);
-                            } else {
-                                if(updateWorkFlow(site, path)) {
-                                    workflowService.updateWorkflowSandboxes(site, path);
-                                }
-                            }
-                        }
-                    }
+                    updateFile(site, item, path, input, user, isPreview, unlock, result);
+                    content.addProperty(DmConstants.KEY_ACTIVITY_TYPE, OPERATION_UPDATE);
                     if (unlock) {
                         // TODO: We need ability to lock/unlock content in repo
                         contentService.unLockContent(site, path);
@@ -150,23 +135,8 @@ public class FormDmContentProcessor extends PathMatchProcessor implements DmCont
                     if (fileExists) {
                         ContentItemTO contentItem = contentService.getContentItem(site, path, 0);
                         InputStream existingContent = contentService.getContent(site, path);
-                        String existingMd5 = ContentUtils.getMd5ForFile(existingContent);
-                        String newMd5 = ContentUtils.getMd5ForFile(input);
-                        if (!existingMd5.equals(newMd5)) {
-                            updateFile(site, contentItem, path, input, user, isPreview, unlock, result);
-                            content.addProperty(DmConstants.KEY_ACTIVITY_TYPE, ActivityService.ActivityType.UPDATED.toString());
-                        } else {
-                            updateLastEditedProperties(site, contentItem.getUri(), user);
-                            if (!isPreview) {
-                                if (cancelWorkflow(site, path)) {
-                                    workflowService.removeFromWorkflow(site, path, true);
-                                } else {
-                                    if(updateWorkFlow(site, path)) {
-                                        workflowService.updateWorkflowSandboxes(site,path);
-                                    }
-                                }
-                            }
-                        }
+                        updateFile(site, contentItem, path, input, user, isPreview, unlock, result);
+                        content.addProperty(DmConstants.KEY_ACTIVITY_TYPE, OPERATION_UPDATE);
                         if (unlock) {
                             // TODO: We need ability to lock/unlock content in repo
                             contentService.unLockContent(site, path);
@@ -175,7 +145,7 @@ public class FormDmContentProcessor extends PathMatchProcessor implements DmCont
                         return;
                     } else {
                         ContentItemTO newFileItem = createNewFile(site, parentItem, fileName, contentType, input, user, unlock, result);
-                        content.addProperty(DmConstants.KEY_ACTIVITY_TYPE, ActivityService.ActivityType.CREATED.toString());
+                        content.addProperty(DmConstants.KEY_ACTIVITY_TYPE, OPERATION_CREATE);
                         return;
                     }
                 }
@@ -224,7 +194,7 @@ public class FormDmContentProcessor extends PathMatchProcessor implements DmCont
      */
     protected ContentItemTO createNewFile(String site, ContentItemTO parentItem, String fileName, String contentType, InputStream input,
     		String user, boolean unlock, ResultTO result)
-            throws ContentNotFoundException {
+            throws ContentNotFoundException, SiteNotFoundException {
         ContentItemTO fileItem = null;
 
         if (parentItem != null) {
@@ -276,10 +246,10 @@ public class FormDmContentProcessor extends PathMatchProcessor implements DmCont
      * @param isPreview
      * @param unlock
      * 			unlock the content upon update?
-     * @throws ServiceException
+     * @throws ServiceLayerException
      */
     protected void updateFile(String site, ContentItemTO contentItem, String path, InputStream input, String user, boolean isPreview, boolean unlock, ResultTO result)
-            throws ServiceException {
+            throws ServiceLayerException {
 
         boolean success = false;
         try {
@@ -370,7 +340,7 @@ public class FormDmContentProcessor extends PathMatchProcessor implements DmCont
     }
 
     @Override
-    public ContentItemTO createMissingFoldersInPath(String site, String path, boolean isPreview) {
+    public ContentItemTO createMissingFoldersInPath(String site, String path, boolean isPreview) throws SiteNotFoundException {
         // create parent folders if missing
         String [] levels = path.split(FILE_SEPARATOR);
         String parentPath = "";
@@ -390,7 +360,7 @@ public class FormDmContentProcessor extends PathMatchProcessor implements DmCont
 
 
     @Override
-    public String fileToFolder(String site, String path) {
+    public String fileToFolder(String site, String path) throws SiteNotFoundException {
         // Check if it is already a folder
 
         if (contentService.contentExists(site, path)) {
@@ -416,7 +386,6 @@ public class FormDmContentProcessor extends PathMatchProcessor implements DmCont
 
     protected ContentService contentService;
     protected WorkflowService workflowService;
-    protected DmDependencyService dmDependencyService;
     protected ServicesConfig servicesConfig;
     protected ObjectMetadataManager objectMetadataManager;
     protected ContentRepository contentRepository;
@@ -426,9 +395,6 @@ public class FormDmContentProcessor extends PathMatchProcessor implements DmCont
 
     public WorkflowService getWorkflowService() { return workflowService; }
     public void setWorkflowService(WorkflowService workflowService) { this.workflowService = workflowService; }
-
-    public DmDependencyService getDmDependencyService() { return dmDependencyService; }
-    public void setDmDependencyService(DmDependencyService dmDependencyService) { this.dmDependencyService = dmDependencyService; }
 
     public ServicesConfig getServicesConfig() { return servicesConfig; }
     public void setServicesConfig(ServicesConfig servicesConfig) { this.servicesConfig = servicesConfig; }

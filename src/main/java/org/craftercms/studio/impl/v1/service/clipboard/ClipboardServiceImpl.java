@@ -1,6 +1,5 @@
 /*
- * Crafter Studio Web-content authoring solution
- * Copyright (C) 2007-2016 Crafter Software Corporation.
+ * Copyright (C) 2007-2019 Crafter Software Corporation. All Rights Reserved.
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -23,12 +22,15 @@ import org.craftercms.commons.validation.annotations.param.ValidateStringParam;
 import org.craftercms.studio.api.v1.log.Logger;
 import org.craftercms.studio.api.v1.log.LoggerFactory;
 
-import org.craftercms.studio.api.v1.exception.ServiceException;
+import org.craftercms.studio.api.v1.exception.ServiceLayerException;
 
 import org.craftercms.studio.api.v1.service.AbstractRegistrableService;
 import org.craftercms.studio.api.v1.service.content.ContentService;
 import org.craftercms.studio.api.v1.service.clipboard.ClipboardService;
+import org.craftercms.studio.api.v1.service.workflow.WorkflowService;
+import org.craftercms.studio.api.v1.to.DmDependencyTO;
 
+import java.util.Collections;
 import java.util.Set;
 import java.util.HashSet;
 
@@ -51,7 +53,7 @@ implements ClipboardService {
     @Override
     @ValidateParams
     public ClipboardItem getItems(@ValidateStringParam(name = "site") String site, HttpSession session)
-    throws ServiceException {
+    throws ServiceLayerException {
         return getClipboardStore(site, session).getOps();
     }
 
@@ -59,7 +61,7 @@ implements ClipboardService {
     @Override
     @ValidateParams
     public boolean cut(@ValidateStringParam(name = "site") String site, @ValidateSecurePathParam(name = "path") String path, HttpSession session)
-    throws ServiceException {
+    throws ServiceLayerException {
         ClipboardItem clipItem = new ClipboardItem(path, true);
         return clip(site, clipItem, true, session);
     }
@@ -67,7 +69,7 @@ implements ClipboardService {
     @Override
     @ValidateParams
     public boolean copy(@ValidateStringParam(name = "site") String site, @ValidateSecurePathParam(name = "path") String path, HttpSession session)
-    throws ServiceException {
+    throws ServiceLayerException {
 
         ClipboardItem clipItem = new ClipboardItem(path, false);
 
@@ -77,14 +79,14 @@ implements ClipboardService {
     @Override
     @ValidateParams
     public boolean copy(@ValidateStringParam(name = "site") String site, ClipboardItem clipItem, HttpSession session)
-    throws ServiceException {
+    throws ServiceLayerException {
         return clip(site, clipItem, false, session);
     }
 
     @Override
     @ValidateParams
     public Set<String> paste(@ValidateStringParam(name = "site") String site, @ValidateStringParam(name = "destinationPath") String destinationPath, HttpSession session)
-    throws ServiceException {
+    throws ServiceLayerException {
         Set<String> pastedItems = new HashSet<String>();
 
         ClipboardItem clipOp = getItems(site, session);
@@ -107,27 +109,26 @@ implements ClipboardService {
      * @param pastedItems collection of (new) pasted paths
      */
     protected void pasteItems(String site, String destinationPath, Set<ClipboardItem> clipOps, Set<String> pastedItems) 
-    throws ServiceException {
+    throws ServiceLayerException {
         for(ClipboardItem op : clipOps) {
             try {
                 String newPath = null;
                 boolean cut = op.isCut;
 
-                if(cut==true) {
+                if (cut) {
                     // RDTMP_COPYPASTE
                     // CopyContent inteface is able to send status and new path yet
-                    // newPath = contentService.moveContent(site, op.path, destinationPath);
+                    workflowService.cleanWorkflow(op.path, site, Collections.<DmDependencyTO>emptySet());
                     newPath = contentService.moveContent(site, op.path, destinationPath);
                 }
                 else {
                     // RDTMP_COPYPASTE
                     // CopyContent inteface is able to send status and new path yet
-                    // newPath = contentService.copyContent(site, op.path, destinationPath);
                     newPath = contentService.copyContent(site, op.path, destinationPath);
 
                     // recurse on copied children
                     pasteItems(site, newPath, op.children, pastedItems);
-                };
+                }
 
                 pastedItems.add(newPath);                
             }
@@ -176,7 +177,11 @@ implements ClipboardService {
 
 
     protected ContentService contentService;
+    protected WorkflowService workflowService;
 
     public ContentService getContentService() { return contentService; }
     public void setContentService(ContentService contentService) { this.contentService = contentService; }
+
+    public WorkflowService getWorkflowService() { return workflowService; }
+    public void setWorkflowService(WorkflowService workflowService) { this.workflowService = workflowService; }
 }

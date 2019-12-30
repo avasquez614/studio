@@ -1,6 +1,5 @@
 /*
- * Crafter Studio Web-content authoring solution
- * Copyright (C) 2007-2016 Crafter Software Corporation.
+ * Copyright (C) 2007-2019 Crafter Software Corporation. All Rights Reserved.
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -25,18 +24,20 @@ import java.util.List;
 import java.util.Set;
 
 import org.apache.commons.codec.digest.DigestUtils;
+import org.apache.commons.lang3.StringUtils;
 import org.craftercms.commons.validation.annotations.param.ValidateParams;
 import org.craftercms.commons.validation.annotations.param.ValidateSecurePathParam;
 import org.craftercms.commons.validation.annotations.param.ValidateStringParam;
 import org.craftercms.studio.api.v1.constant.DmConstants;
+import org.craftercms.studio.api.v1.exception.ServiceLayerException;
+import org.craftercms.studio.api.v1.exception.SiteNotFoundException;
 import org.craftercms.studio.api.v1.log.Logger;
 import org.craftercms.studio.api.v1.log.LoggerFactory;
 import org.craftercms.studio.api.v1.repository.ContentRepository;
 import org.craftercms.studio.api.v1.service.AbstractRegistrableService;
 import org.craftercms.studio.api.v1.service.content.ContentService;
 import org.craftercms.studio.api.v1.service.content.ObjectMetadataManager;
-import org.craftercms.studio.api.v1.service.dependency.DependencyRule;
-import org.craftercms.studio.api.v1.service.dependency.DmDependencyService;
+import org.craftercms.studio.api.v1.service.dependency.DependencyService;
 import org.craftercms.studio.api.v1.service.deployment.DeploymentException;
 import org.craftercms.studio.api.v1.service.deployment.DeploymentService;
 import org.craftercms.studio.api.v1.service.deployment.DmPublishService;
@@ -52,6 +53,14 @@ public class DmPublishServiceImpl extends AbstractRegistrableService implements 
 
     private static final Logger logger = LoggerFactory.getLogger(DmPublishServiceImpl.class);
 
+    protected DeploymentService deploymentService;
+    protected SecurityService securityService;
+    protected SiteService siteService;
+    protected ContentService contentService;
+    protected ContentRepository contentRepository;
+    protected ObjectMetadataManager objectMetadataManager;
+    protected ObjectStateService objectStateService;
+    protected DependencyService dependencyService;
 
     @Override
     public void register() {
@@ -60,8 +69,8 @@ public class DmPublishServiceImpl extends AbstractRegistrableService implements 
 
     @Override
     @ValidateParams
-    public void publish(@ValidateStringParam(name = "site") final String site, List<String> paths, ZonedDateTime launchDate,
-                        final MultiChannelPublishingContext mcpContext) {
+    public void publish(@ValidateStringParam(name = "site") final String site, List<String> paths,
+                        ZonedDateTime launchDate, final MultiChannelPublishingContext mcpContext) {
         boolean scheduledDateIsNow = false;
         if (launchDate == null) {
             scheduledDateIsNow=true;
@@ -88,20 +97,22 @@ public class DmPublishServiceImpl extends AbstractRegistrableService implements 
 
     @Override
     @ValidateParams
-    public void unpublish(@ValidateStringParam(name = "site") String site, List<String> paths, @ValidateStringParam(name = "approver") String approver, ZonedDateTime scheduleDate) {
+    public void unpublish(@ValidateStringParam(name = "site") String site, List<String> paths,
+                          @ValidateStringParam(name = "approver") String approver, ZonedDateTime scheduleDate) {
         if (scheduleDate == null) {
             scheduleDate = ZonedDateTime.now(ZoneOffset.UTC);
         }
         try {
             deploymentService.delete(site, paths, approver, scheduleDate);
-        } catch (DeploymentException ex) {
+        } catch (DeploymentException | SiteNotFoundException ex) {
             logger.error("Unable to delete files due a error ",ex);
         }
     }
 
     @Override
     @ValidateParams
-    public void cancelScheduledItem(@ValidateStringParam(name = "site") String site, @ValidateSecurePathParam(name = "path") String path) {
+    public void cancelScheduledItem(@ValidateStringParam(name = "site") String site,
+                                    @ValidateSecurePathParam(name = "path") String path) {
         try {
             deploymentService.cancelWorkflow(site, path);
         } catch (DeploymentException e) {
@@ -116,7 +127,8 @@ public class DmPublishServiceImpl extends AbstractRegistrableService implements 
      */
     @Override
     @ValidateParams
-	public boolean hasChannelsConfigure(@ValidateStringParam(name = "site") String site, MultiChannelPublishingContext mcpContext) {
+	public boolean hasChannelsConfigure(@ValidateStringParam(name = "site") String site,
+                                        MultiChannelPublishingContext mcpContext) {
     	boolean toReturn = false;
         if (mcpContext != null) {
             List<PublishingTargetTO> publishingTargets = siteService.getPublishingTargetsForSite(site);
@@ -131,8 +143,11 @@ public class DmPublishServiceImpl extends AbstractRegistrableService implements 
 
     @Override
     @ValidateParams
-    public void bulkGoLive(@ValidateStringParam(name = "site") String site, @ValidateStringParam String environment, @ValidateSecurePathParam(name = "path") String path) {
-        logger.info("Starting Bulk Go Live for path " + path + " site " + site);
+    public void bulkGoLive(@ValidateStringParam(name = "site") String site,
+                           @ValidateStringParam String environment,
+                           @ValidateSecurePathParam(name = "path") String path,
+                           String comment) throws ServiceLayerException {
+        logger.info("Starting Bulk Publish to '" + environment + "' for path " + path + " site " + site);
 
         String queryPath = path;
         if (queryPath.startsWith(FILE_SEPARATOR + DmConstants.INDEX_FILE)) {
@@ -144,7 +159,8 @@ public class DmPublishServiceImpl extends AbstractRegistrableService implements 
 
         childrenPaths = objectStateService.getChangeSetForSubtree(site, queryPath);
 
-        logger.debug("Collected " + childrenPaths.size() + " content items for site " + site + " and root path " + queryPath);
+        logger.debug("Collected " + childrenPaths.size() + " content items for site " + site + " and root path "
+                + queryPath);
         Set<String> processedPaths = new HashSet<String>();
         ZonedDateTime launchDate = ZonedDateTime.now(ZoneOffset.UTC);
         for (String childPath : childrenPaths) {
@@ -155,7 +171,7 @@ public class DmPublishServiceImpl extends AbstractRegistrableService implements 
                 List<String> candidatesToPublish = new ArrayList<String>();
                 pathsToPublish.add(childPath);
                 candidatesToPublish.addAll(objectMetadataManager.getSameCommitItems(site, childPath));
-                candidatesToPublish.addAll(deploymentDependencyRule.applyRule(site, childPath));
+                candidatesToPublish.addAll(dependencyService.getPublishingDependencies(site, childPath));
                 for (String pathToAdd : candidatesToPublish) {
                     String hash = DigestUtils.md2Hex(pathToAdd);
                     if (processedPaths.add(hash)) {
@@ -163,56 +179,80 @@ public class DmPublishServiceImpl extends AbstractRegistrableService implements 
                     }
                 }
                 String aprover = securityService.getCurrentUser();
-                String comment = "Bulk Go Live invoked by " + aprover;
-                logger.info("Deploying package of " + pathsToPublish.size() + " items for site " + site + " path " +
-                             childPath);
+                if (StringUtils.isEmpty(comment)) {
+                    comment = "Bulk Publish invoked by " + aprover;
+                }
+                logger.info("Deploying package of " + pathsToPublish.size() + " items to '" + environment +
+                        "' for site" + site + " path " + childPath);
                 try {
                     deploymentService.deploy(site, environment, pathsToPublish, launchDate, aprover, comment, true);
                 } catch (DeploymentException e) {
-                    logger.error("Error while running bulk Go Live operation", e);
+                    logger.error("Error while running Bulk Publish operation", e);
                 } finally {
                     logger.debug("Finished processing deployment package for path " + childPath + " site " + site);
                 }
             }
         }
-        logger.info("Finished Bulk Go Live for path " + path + " site " + site);
+        logger.info("Finished Bulk Publish to '" + environment + "' for path " + path + " site " + site);
     }
 
     public void setDeploymentService(DeploymentService deploymentService) {
         this.deploymentService = deploymentService;
     }
 
-    public SecurityService getSecurityService() {return securityService; }
-    public void setSecurityService(SecurityService securityService) { this.securityService = securityService; }
+    public SecurityService getSecurityService() {
+        return securityService;
+    }
 
-    public SiteService getSiteService() { return siteService; }
-    public void setSiteService(SiteService siteService) { this.siteService = siteService; }
+    public void setSecurityService(SecurityService securityService) {
+        this.securityService = securityService;
+    }
 
-    public ContentService getContentService() { return contentService; }
-    public void setContentService(ContentService contentService) { this.contentService = contentService; }
+    public SiteService getSiteService() {
+        return siteService;
+    }
 
-    public ContentRepository getContentRepository() { return contentRepository; }
-    public void setContentRepository(ContentRepository contentRepository) { this.contentRepository = contentRepository; }
+    public void setSiteService(SiteService siteService) {
+        this.siteService = siteService;
+    }
 
-    public ObjectMetadataManager getObjectMetadataManager() { return objectMetadataManager; }
-    public void setObjectMetadataManager(ObjectMetadataManager objectMetadataManager) { this.objectMetadataManager = objectMetadataManager; }
+    public ContentService getContentService() {
+        return contentService;
+    }
 
-    public DmDependencyService getDmDependencyService() { return dmDependencyService; }
-    public void setDmDependencyService(DmDependencyService dmDependencyService) { this.dmDependencyService = dmDependencyService; }
+    public void setContentService(ContentService contentService) {
+        this.contentService = contentService;
+    }
 
-    public ObjectStateService getObjectStateService() { return objectStateService; }
-    public void setObjectStateService(ObjectStateService objectStateService) { this.objectStateService = objectStateService; }
+    public ContentRepository getContentRepository() {
+        return contentRepository;
+    }
 
-    public DependencyRule getDeploymentDependencyRule() { return deploymentDependencyRule; }
-    public void setDeploymentDependencyRule(DependencyRule deploymentDependencyRule) { this.deploymentDependencyRule = deploymentDependencyRule; }
+    public void setContentRepository(ContentRepository contentRepository) {
+        this.contentRepository = contentRepository;
+    }
 
-    protected DeploymentService deploymentService;
-    protected SecurityService securityService;
-    protected SiteService siteService;
-    protected ContentService contentService;
-    protected ContentRepository contentRepository;
-    protected ObjectMetadataManager objectMetadataManager;
-    protected DmDependencyService dmDependencyService;
-    protected ObjectStateService objectStateService;
-    protected DependencyRule deploymentDependencyRule;
+    public ObjectMetadataManager getObjectMetadataManager() {
+        return objectMetadataManager;
+    }
+
+    public void setObjectMetadataManager(ObjectMetadataManager objectMetadataManager) {
+        this.objectMetadataManager = objectMetadataManager;
+    }
+
+    public ObjectStateService getObjectStateService() {
+        return objectStateService;
+    }
+
+    public void setObjectStateService(ObjectStateService objectStateService) {
+        this.objectStateService = objectStateService;
+    }
+
+    public DependencyService getDependencyService() {
+        return dependencyService;
+    }
+
+    public void setDependencyService(DependencyService dependencyService) {
+        this.dependencyService = dependencyService;
+    }
 }

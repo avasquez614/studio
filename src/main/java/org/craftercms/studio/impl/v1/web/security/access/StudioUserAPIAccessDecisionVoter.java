@@ -1,6 +1,5 @@
 /*
- * Crafter Studio Web-content authoring solution
- * Copyright (C) 2007-2017 Crafter Software Corporation.
+ * Copyright (C) 2007-2019 Crafter Software Corporation. All Rights Reserved.
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -28,17 +27,14 @@ import net.sf.json.JSONObject;
 import org.apache.commons.fileupload.servlet.ServletFileUpload;
 import org.apache.commons.io.IOUtils;
 import org.apache.commons.lang3.StringUtils;
-import org.craftercms.studio.api.v1.dal.User;
 import org.craftercms.studio.api.v1.log.Logger;
 import org.craftercms.studio.api.v1.log.LoggerFactory;
+import org.craftercms.studio.api.v2.dal.User;
 import org.springframework.http.HttpMethod;
 import org.springframework.security.access.ConfigAttribute;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.web.FilterInvocation;
 
-/**
- * Created by dejanbrkic on 4/19/17.
- */
 public class StudioUserAPIAccessDecisionVoter extends StudioAbstractAccessDecisionVoter {
 
     private final static Logger logger = LoggerFactory.getLogger(StudioUserAPIAccessDecisionVoter.class);
@@ -52,8 +48,8 @@ public class StudioUserAPIAccessDecisionVoter extends StudioAbstractAccessDecisi
     private final static String GET = "/api/1/services/api/1/user/get.json";
     private final static String GET_ALL = "/api/1/services/api/1/user/get-all.json";
     private final static String GET_PER_SITE = "/api/1/services/api/1/user/get-per-site.json";
-    private final static String LOGIN = "/api/1/services/api/1/user/login.json";
-    private final static String LOGOUT = "/api/1/services/api/1/user/logout.json";
+    private final static String LOGIN = "/api/1/services/api/1/security/login.json";
+    private final static String LOGOUT = "/api/1/services/api/1/security/logout.json";
     private final static String RESET_PASSWORD = "/api/1/services/api/1/user/reset-password.json";
     private final static String SET_PASSWORD = "/api/1/services/api/1/user/set-password.json";
     private final static String STATUS = "/api/1/services/api/1/user/status.json";
@@ -99,7 +95,7 @@ public class StudioUserAPIAccessDecisionVoter extends StudioAbstractAccessDecisi
             }
             User currentUser = null;
             try {
-                currentUser = (User)authentication.getPrincipal();
+                currentUser = (User) authentication.getPrincipal();
             } catch (ClassCastException e) {
                 // anonymous user
                 if (!authentication.getPrincipal().toString().equals("anonymousUser")) {

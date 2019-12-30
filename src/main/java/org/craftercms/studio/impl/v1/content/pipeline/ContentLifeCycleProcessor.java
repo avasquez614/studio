@@ -1,6 +1,5 @@
 /*
- * Crafter Studio Web-content authoring solution
- * Copyright (C) 2007-2016 Crafter Software Corporation.
+ * Copyright (C) 2007-2019 Crafter Software Corporation. All Rights Reserved.
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -23,11 +22,11 @@ import org.craftercms.studio.api.v1.content.pipeline.PipelineContent;
 import org.craftercms.studio.api.v1.exception.ContentProcessException;
 import org.craftercms.studio.api.v1.log.Logger;
 import org.craftercms.studio.api.v1.log.LoggerFactory;
-import org.craftercms.studio.api.v1.service.activity.ActivityService;
 import org.craftercms.studio.api.v1.service.content.DmContentLifeCycleService;
 import org.craftercms.studio.api.v1.to.ResultTO;
 
 import static org.craftercms.studio.api.v1.constant.StudioConstants.FILE_SEPARATOR;
+import static org.craftercms.studio.api.v2.dal.AuditLogConstants.OPERATION_CREATE;
 
 /**
  * 
@@ -55,7 +54,8 @@ public class ContentLifeCycleProcessor extends PathMatchProcessor {
 			DmContentLifeCycleService.ContentLifeCycleOperation operation = (DmContentLifeCycleService.ContentLifeCycleOperation.getOperation(operValue));
 			if (operation == null) {
 				String type = content.getProperty(DmConstants.KEY_ACTIVITY_TYPE);
-				operation = (ActivityService.ActivityType.CREATED.toString().equals(type)) ? DmContentLifeCycleService.ContentLifeCycleOperation.NEW : DmContentLifeCycleService.ContentLifeCycleOperation.UPDATE;
+				operation = (OPERATION_CREATE.equals(type)) ? DmContentLifeCycleService.ContentLifeCycleOperation.NEW :
+                        DmContentLifeCycleService.ContentLifeCycleOperation.UPDATE;
 			}
 	    	dmContentLifeCycleService.process(site, user, path, contentType, operation, null);
     	}

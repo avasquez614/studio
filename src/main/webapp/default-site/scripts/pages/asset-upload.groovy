@@ -1,7 +1,27 @@
-import scripts.api.ContentServices
-import org.springframework.web.multipart.MultipartRequest
+/*
+ * Copyright (C) 2007-2019 Crafter Software Corporation. All Rights Reserved.
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ */
 
-model.cookieDomain = request.getServerName()
+import org.apache.commons.fileupload.servlet.ServletFileUpload
+import org.apache.commons.fileupload.util.Streams
+import org.apache.commons.io.FilenameUtils
+import org.apache.commons.text.StringEscapeUtils
+import scripts.api.ContentServices
+
+model.cookieDomain = StringEscapeUtils.escapeXml10(request.getServerName())
 
 def result = [:]
 def site = ""
@@ -19,21 +39,46 @@ def systemAsset = null
 
 def context = ContentServices.createContext(applicationContext, request)
 
-if(request instanceof MultipartRequest) {
-    site = params.site
-    path = params.path
-    isImage = params.isImage
-    allowedWidth = params.allowedWidth
-    allowedHeight = params.allowedHeight
-    allowLessSize = params.allowLessSize
-    changeCase = params.changeCase
-    def file = request.getFile("file")
-    fileName = file.getOriginalFilename()
-    contentType = file.getContentType()
-    content = file.getInputStream()
-
-    result = ContentServices.writeContentAsset(context, site, path, fileName, content,
-            isImage, allowedWidth, allowedHeight, allowLessSize, draft, unlock, systemAsset)
+if(ServletFileUpload.isMultipartContent(request)) {
+    def upload = new ServletFileUpload()
+    def iterator = upload.getItemIterator(request)
+    while(iterator.hasNext()) {
+        def item = iterator.next()
+        def name = item.getFieldName()
+        def stream = item.openStream()
+        if (item.isFormField()) {
+            switch (name) {
+                case "site":
+                    site = Streams.asString(stream)
+                    break
+                case "path":
+                    path = Streams.asString(stream)
+                    break
+                case "isImage":
+                    isImage = Streams.asString(stream)
+                    break
+                case "allowedWidth":
+                    allowedWidth = Streams.asString(stream)
+                    break
+                case "allowedHeight":
+                    allowedHeight = Streams.asString(stream)
+                    break
+                case "allowLessSize":
+                    allowLessSize = Streams.asString(stream)
+                    break
+                case "changeCase":
+                    changeCase = Streams.asString(stream)
+                    break
+            }
+        } else {
+            fileName = item.getName()
+            if (fileName != null) {
+                fileName = FilenameUtils.getName(fileName)
+            }
+            result = ContentServices.writeContentAsset(context, site, path, fileName, stream,
+                    isImage, allowedWidth, allowedHeight, allowLessSize, draft, unlock, systemAsset)
+        }
+    }
 } else {
     site = request.getParameter("site")
     path = request.getParameter("path")

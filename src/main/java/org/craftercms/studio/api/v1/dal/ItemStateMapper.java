@@ -1,6 +1,5 @@
 /*
- * Crafter Studio Web-content authoring solution
- * Copyright (C) 2007-2016 Crafter Software Corporation.
+ * Copyright (C) 2007-2019 Crafter Software Corporation. All Rights Reserved.
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -25,6 +24,11 @@ import java.util.Map;
  * @author Dejan Brkic
  */
 public interface ItemStateMapper {
+
+    String SITE_PARAM = "site";
+    String EDITED_STATES_PARAM = "editedStates";
+    String NEW_STATES_PARAM = "newStates";
+    String POSSIBLE_PARENTS_PARAM = "possibleParents";
 
     List<ItemState> getObjectStateByStates(Map params);
 
@@ -61,4 +65,6 @@ public interface ItemStateMapper {
     int deletedPathExists(Map params);
 
     void deployCommitId(Map params);
+
+    List<String> getMandatoryParentsForPublishing(Map params);
 }

@@ -1,6 +1,5 @@
 /*
- * Crafter Studio Web-content authoring solution
- * Copyright (C) 2007-2016 Crafter Software Corporation.
+ * Copyright (C) 2007-2019 Crafter Software Corporation. All Rights Reserved.
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -17,20 +16,9 @@
  */
 
 
-import org.craftercms.studio.api.v1.service.activity.ActivityService
-import scripts.api.ActivityServices;
-
 def result = [:]
-def site = request.getParameter("site")
-def user = request.getParameter("user")
-def path = request.getParameter("path")
-def activity = request.getParameter("activity")
-def contentTypeClass = request.getParameter("contentTypeClass")
-def activityType = ActivityService.ActivityType.valueOf(activity.toUpperCase());
-def extraInfo = [:]
-extraInfo.contentType = contentTypeClass;
 
-def context = ActivityServices.createContext(applicationContext, request);
-result.result = ActivityServices.postActivity(context, site, user, path, activityType, extraInfo);
+result.message = "API deprecated."
+response.setStatus(410)
 
-return result;
+return result

@@ -1,5 +1,22 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
+  ~ Copyright (C) 2007-2019 Crafter Software Corporation. All Rights Reserved.
+  ~
+  ~ This program is free software: you can redistribute it and/or modify
+  ~ it under the terms of the GNU General Public License as published by
+  ~ the Free Software Foundation, either version 3 of the License, or
+  ~ (at your option) any later version.
+  ~
+  ~ This program is distributed in the hope that it will be useful,
+  ~ but WITHOUT ANY WARRANTY; without even the implied warranty of
+  ~ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+  ~ GNU General Public License for more details.
+  ~
+  ~ You should have received a copy of the GNU General Public License
+  ~ along with this program.  If not, see <http://www.gnu.org/licenses/>.
+  -->
+
+<!--
     This file contains global permissions configuration for Crafter Studio. Permissions per site are managed
     within Crafter Studio's UI.
 
@@ -24,7 +41,7 @@
 -->
 
 <permissions>
-    <role name="crafter-admin">
+    <role name="system_admin">
         <rule regex="/.*">
             <allowed-permissions>
                 <permission>Read</permission>
@@ -32,21 +49,39 @@
                 <permission>Delete</permission>
                 <permission>Create Folder</permission>
                 <permission>Publish</permission>
-            </allowed-permissions>
-        </rule>
-    </role>
-    <role name="create-sites">
-        <rule regex="/.*">
-            <allowed-permissions>
                 <permission>create-site</permission>
+                <permission>read_groups</permission>
+                <permission>create_groups</permission>
+                <permission>update_groups</permission>
+                <permission>delete_groups</permission>
+                <permission>read_users</permission>
+                <permission>create_users</permission>
+                <permission>update_users</permission>
+                <permission>delete_users</permission>
+                <permission>read_cluster</permission>
+                <permission>create_cluster</permission>
+                <permission>update_cluster</permission>
+                <permission>delete_cluster</permission>
+                <permission>audit_log</permission>
+                <permission>read_logs</permission>
+                <permission>list_cmis</permission>
+                <permission>search_cmis</permission>
+                <permission>clone_content_cmis</permission>
+                <permission>upload_content_cmis</permission>
+                <permission>add_remote</permission>
+                <permission>list_remotes</permission>
+                <permission>pull_from_remote</permission>
+                <permission>push_to_remote</permission>
+                <permission>rebuild_database</permission>
+                <permission>remove_remote</permission>
+                <permission>S3 Read</permission>
+                <permission>S3 Write</permission>
+                <permission>delete_content</permission>
+                <permission>webdav_read</permission>
+                <permission>webdav_write</permission>
+                <permission>write_configuration</permission>
+                <permission>write_global_configuration</permission>
             </allowed-permissions>
         </rule>
     </role>
-    <!--<role name="*">-->
-    <!--<rule regex="/.*">-->
-    <!--<allowed-permissions>-->
-    <!--<permission>Read</permission>-->
-    <!--</allowed-permissions>-->
-    <!--</rule>-->
-    <!--</role>-->
 </permissions>

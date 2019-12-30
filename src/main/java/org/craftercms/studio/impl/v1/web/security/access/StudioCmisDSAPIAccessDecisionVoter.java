@@ -1,6 +1,5 @@
 /*
- * Crafter Studio Web-content authoring solution
- * Copyright (C) 2007-2017 Crafter Software Corporation.
+ * Copyright (C) 2007-2019 Crafter Software Corporation. All Rights Reserved.
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -18,21 +17,14 @@
 
 package org.craftercms.studio.impl.v1.web.security.access;
 
-import net.sf.json.JSONException;
-import net.sf.json.JSONObject;
-import org.apache.commons.io.IOUtils;
-import org.apache.commons.lang3.StringUtils;
-import org.craftercms.studio.api.v1.dal.User;
 import org.craftercms.studio.api.v1.log.Logger;
 import org.craftercms.studio.api.v1.log.LoggerFactory;
-import org.springframework.http.HttpMethod;
+import org.craftercms.studio.api.v2.dal.User;
 import org.springframework.security.access.ConfigAttribute;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.web.FilterInvocation;
 
 import javax.servlet.http.HttpServletRequest;
-import java.io.IOException;
-import java.io.InputStream;
 import java.util.Collection;
 
 public class StudioCmisDSAPIAccessDecisionVoter extends StudioAbstractAccessDecisionVoter {
@@ -41,6 +33,7 @@ public class StudioCmisDSAPIAccessDecisionVoter extends StudioAbstractAccessDeci
 
     private final static String LIST = "/api/1/services/api/1/cmis/list.json";
     private final static String SEARCH = "/api/1/services/api/1/cmis/search.json";
+    private final static String UPLOAD = "/api/1/services/api/1/cmis/upload.json";
 
     @Override
     public boolean supports(ConfigAttribute configAttribute) {
@@ -58,7 +51,7 @@ public class StudioCmisDSAPIAccessDecisionVoter extends StudioAbstractAccessDeci
             String siteParam = request.getParameter("site_id");
             User currentUser = null;
             try {
-                currentUser = (User)authentication.getPrincipal();
+                currentUser = (User) authentication.getPrincipal();
             } catch (ClassCastException e) {
                 // anonymous user
                 if (!authentication.getPrincipal().toString().equals("anonymousUser")) {
@@ -66,7 +59,15 @@ public class StudioCmisDSAPIAccessDecisionVoter extends StudioAbstractAccessDeci
                     return ACCESS_ABSTAIN;
                 }
             }
+
             switch (requestUri) {
+                case UPLOAD:
+                    if (currentUser != null) {
+                        toRet = ACCESS_GRANTED;
+                    } else {
+                        toRet = ACCESS_DENIED;
+                    }
+                    break;
                 case SEARCH:
                 case LIST:
                     if (currentUser != null && isSiteMember(siteParam, currentUser)) {

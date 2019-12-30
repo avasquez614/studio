@@ -1,6 +1,5 @@
 /*
- * Crafter Studio Web-content authoring solution
- * Copyright (C) 2007-2016 Crafter Software Corporation.
+ * Copyright (C) 2007-2019 Crafter Software Corporation. All Rights Reserved.
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -19,11 +18,11 @@ package org.craftercms.studio.api.v1.service;
 
 public interface GeneralLockService {
 
-    public final static String MASTER_LOCK = "MASTER LOCK";
+    String MASTER_LOCK = "MASTER LOCK";
 
-    public void lock(String objectId);
+    void lock(String objectId);
 
-    public void unlock(String objectId);
+    void unlock(String objectId);
 
-    public boolean tryLock(String objectId);
+    boolean tryLock(String objectId);
 }

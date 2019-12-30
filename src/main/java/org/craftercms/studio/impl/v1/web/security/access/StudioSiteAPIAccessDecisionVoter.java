@@ -1,6 +1,5 @@
 /*
- * Crafter Studio Web-content authoring solution
- * Copyright (C) 2007-2017 Crafter Software Corporation.
+ * Copyright (C) 2007-2019 Crafter Software Corporation. All Rights Reserved.
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -28,9 +27,9 @@ import net.sf.json.JSONObject;
 import org.apache.commons.fileupload.servlet.ServletFileUpload;
 import org.apache.commons.io.IOUtils;
 import org.apache.commons.lang3.StringUtils;
-import org.craftercms.studio.api.v1.dal.User;
 import org.craftercms.studio.api.v1.log.Logger;
 import org.craftercms.studio.api.v1.log.LoggerFactory;
+import org.craftercms.studio.api.v2.dal.User;
 import org.springframework.http.HttpMethod;
 import org.springframework.security.access.ConfigAttribute;
 import org.springframework.security.core.Authentication;
@@ -41,6 +40,7 @@ public class StudioSiteAPIAccessDecisionVoter extends StudioAbstractAccessDecisi
     private final static Logger logger = LoggerFactory.getLogger(StudioSiteAPIAccessDecisionVoter.class);
 
     private final static String CREATE = "/api/1/services/api/1/site/create.json";
+    private final static String DELETE = "/api/1/services/api/1/site/delete-site.json";
 
     @Override
     public boolean supports(ConfigAttribute configAttribute) {
@@ -87,6 +87,7 @@ public class StudioSiteAPIAccessDecisionVoter extends StudioAbstractAccessDecisi
             }
             switch (requestUri) {
                 case CREATE:
+                case DELETE:
                     if (currentUser != null && isAdmin(currentUser)) {
                         toRet = ACCESS_GRANTED;
                     } else {

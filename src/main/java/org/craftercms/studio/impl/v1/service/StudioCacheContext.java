@@ -1,3 +1,20 @@
+/*
+ * Copyright (C) 2007-2019 Crafter Software Corporation. All Rights Reserved.
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ */
+
 package org.craftercms.studio.impl.v1.service;
 
 import org.craftercms.core.service.Context;
@@ -31,17 +48,22 @@ public class StudioCacheContext implements Context {
     }
 
     @Override
+    public long getCacheVersion() {
+        return 1;
+    }
+
+    @Override
+    public void setCacheVersion(long cacheVersion) {
+        throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public String getCacheScope() {
+        return getId();
+    }
+
+    @Override
     public ContentStoreAdapter getStoreAdapter() {
-        return null;
-    }
-
-    @Override
-    public String getStoreServerUrl() {
-        return null;
-    }
-
-    @Override
-    public String getRootFolderPath() {
         return null;
     }
 
@@ -63,6 +85,16 @@ public class StudioCacheContext implements Context {
     @Override
     public boolean ignoreHiddenFiles() {
         return DEFAULT_IGNORE_HIDDEN_FILES;
+    }
+
+    @Override
+    public Context clone() {
+        try {
+            return (Context) super.clone();
+        } catch (CloneNotSupportedException e) {
+            // Shouldn't happen
+            throw new RuntimeException(e);
+        }
     }
 
     protected boolean isConfig;

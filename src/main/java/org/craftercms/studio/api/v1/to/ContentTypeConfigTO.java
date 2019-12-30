@@ -1,6 +1,5 @@
 /*
- * Crafter Studio Web-content authoring solution
- * Copyright (C) 2007-2016 Crafter Software Corporation.
+ * Copyright (C) 2007-2019 Crafter Software Corporation. All Rights Reserved.
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -105,6 +104,10 @@ public class ContentTypeConfigTO implements TimeStamped, Serializable {
 	 * the configuration noderef this content type is associated with
 	 */
 	protected String nodeRef;
+
+	protected boolean quickCreate;
+
+	protected String quickCreatePath;
 	
 	public String getImageThumbnail() {
 		return imageThumbnail;
@@ -337,7 +340,23 @@ public class ContentTypeConfigTO implements TimeStamped, Serializable {
 		this.type = type;
 	}
 
-	/*
+    public boolean isQuickCreate() {
+        return quickCreate;
+    }
+
+    public void setQuickCreate(boolean quickCreate) {
+        this.quickCreate = quickCreate;
+    }
+
+    public String getQuickCreatePath() {
+        return quickCreatePath;
+    }
+
+    public void setQuickCreatePath(String quickCreatePath) {
+        this.quickCreatePath = quickCreatePath;
+    }
+
+    /*
 	 * (non-Javadoc)
 	 * @see java.lang.Object#toString()
 	 */

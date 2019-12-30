@@ -1,6 +1,5 @@
 /*
- * Crafter Studio Web-content authoring solution
- * Copyright (C) 2007-2016 Crafter Software Corporation.
+ * Copyright (C) 2007-2019 Crafter Software Corporation. All Rights Reserved.
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -17,21 +16,36 @@
  */
 
 
-import scripts.api.SiteServices;
+import org.apache.commons.lang3.StringUtils
+import scripts.api.SiteServices
 
-def result = [:];
-def site = params.site;
+def result = [:]
+def site = params.site_id
 
-def valid = true;
+/** Validate Parameters */
+def invalidParams = false
+def paramsList = []
 
-if (valid)
-{
-    def context = SiteServices.createContext(applicationContext, request);
-    result.result = SiteServices.reloadSiteConfiguration(context, site);
+// site_id
+try {
+    if (StringUtils.isEmpty(site)) {
+        site = params.site
+        if (StringUtils.isEmpty(site)) {
+            invalidParams = true
+            paramsList.add("site_id")
+        }
+    }
+} catch (Exception exc) {
+    invalidParams = true
+    paramsList.add("site_id")
 }
-else
-{
-    status.code = 400;
-    status.redirect = true;
+
+if (invalidParams) {
+    response.setStatus(400)
+    result.message = "Invalid parameter(s): " + paramsList
+} else {
+    def context = SiteServices.createContext(applicationContext, request)
+    result.result = SiteServices.reloadSiteConfiguration(context, site)
 }
-return result.result;
+
+return result

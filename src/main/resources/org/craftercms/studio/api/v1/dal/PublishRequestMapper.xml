@@ -1,7 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
-  ~ Crafter Studio Web-content authoring solution
-  ~ Copyright (C) 2007-2014 Crafter Software Corporation.
+  ~ Copyright (C) 2007-2019 Crafter Software Corporation. All Rights Reserved.
   ~
   ~ This program is free software: you can redistribute it and/or modify
   ~ it under the terms of the GNU General Public License as published by
@@ -35,6 +34,7 @@
         <result property="contentTypeClass" column="contenttypeclass"/>
         <result property="submissionComment" column="submissioncomment"/>
         <result property="commitId" column="commit_id"/>
+        <result property="packageId" column="package_id"/>
     </resultMap>
 
     <select id="getScheduledItems" resultMap="PublishRequestMap" parameterType="java.util.Map">
@@ -46,22 +46,11 @@
         ORDER BY scheduleddate ASC
     </select>
 
-    <select id="getItemsBySiteAndStates" resultMap="PublishRequestMap" parameterType="java.util.Map">
-        SELECT *
-        FROM publish_request
-        WHERE site = #{site}
-        AND state in
-        <foreach item="state" index="index" collection="states"
-                 open="(" separator="," close=")">
-            #{state}
-        </foreach>
-        AND scheduleddate &gt; #{now}
-        ORDER BY scheduleddate ASC, id asc
-    </select>
-
     <insert id="insertItemForDeployment" parameterType="org.craftercms.studio.api.v1.dal.PublishRequest">
-        INSERT INTO publish_request (site, environment, path, oldpath, username, scheduleddate, state, action, contenttypeclass, submissioncomment, commit_id)
-        values (#{site}, #{environment}, #{path}, #{oldPath}, #{user}, #{scheduledDate}, #{state}, #{action}, #{contentTypeClass}, #{submissionComment}, #{commitId})
+        INSERT INTO publish_request (site, environment, path, oldpath, username, scheduleddate, state, action,
+        contenttypeclass, submissioncomment, commit_id, package_id)
+        values (#{site}, #{environment}, #{path}, #{oldPath}, #{user}, #{scheduledDate}, #{state}, #{action},
+        #{contentTypeClass}, #{submissionComment}, #{commitId}, #{packageId})
     </insert>
 
     <update id="cancelWorkflow" parameterType="java.util.Map">
@@ -73,12 +62,17 @@
         AND scheduleddate &gt; #{now}
     </update>
 
-    <update id="cancelDeployment" parameterType="java.util.Map">
+    <update id="cancelWorkflowBulk" parameterType="java.util.Map">
         UPDATE publish_request
         SET state = #{canceledState}
-        WHERE id = #{id}
-        AND site = #{site}
-        AND path = #{path}
+        WHERE site = #{site}
+        AND state = #{state}
+        AND scheduleddate &gt; #{now}
+        AND path IN
+        <foreach item="path" index="index" collection="paths"
+                 open="(" separator="," close=")">
+            #{path}
+        </foreach>
     </update>
 
     <select id="getItemsReadyForDeployment" resultMap="PublishRequestMap">
@@ -89,21 +83,6 @@
         AND environment = #{environment}
         AND scheduleddate &lt;= #{now}
         ORDER BY scheduleddate ASC
-    </select>
-
-    <select id="checkIfItemWasPublished" resultType="java.lang.Integer">
-        SELECT count(1) FROM publish_request
-        WHERE site = #{site}
-        AND path = #{path}
-        AND state = #{state}
-    </select>
-
-    <select id="checkIfItemWasPublishedForEnvironment" resultType="java.lang.Integer">
-        SELECT count(1) FROM publish_request
-        WHERE site = #{site}
-        AND environment = #{environment}
-        AND path = #{path}
-        AND state = #{state}
     </select>
 
     <update id="updateItemDeploymentState" parameterType="org.craftercms.studio.api.v1.dal.PublishRequest">
@@ -141,24 +120,6 @@
         LIMIT 0, 1
     </select>
 
-    <select id="getLastDeployedItem" resultMap="PublishRequestMap">
-        SELECT *
-        FROM publish_request
-        WHERE site = #{site}
-        AND state = #{state}
-        AND scheduleddate &lt;= #{now}
-        ORDER BY scheduleddate DESC
-        LIMIT 0, 1
-    </select>
-
-    <select id="getQueuedPaths" resultType="String" parameterType="java.util.Map">
-        SELECT path
-        FROM publish_request
-        WHERE site = #{site_id}
-        AND environment = #{environment}
-        AND state = #{state}
-    </select>
-
     <select id="checkItemQueued" resultType="int" parameterType="java.util.Map">
         SELECT count(1)
         FROM publish_request
@@ -168,4 +129,21 @@
         AND state = #{state}
         AND commit_id = #{commitId}
     </select>
+
+    <select id="isPublishingQueueEmpty" resultType="int">
+        SELECT count(1)
+        FROM publish_request
+        WHERE site = #{site}
+        AND scheduleddate &lt;= #{now}
+        AND state = #{state}
+        ORDER BY scheduleddate ASC
+    </select>
+
+    <update id="resetProcessingQueue" parameterType="java.util.Map">
+        UPDATE publish_request
+        SET state = #{readyState}
+        WHERE site = #{siteId}
+        AND environment = #{environment}
+        AND state = #{processingState}
+    </update>
 </mapper>

@@ -1,6 +1,5 @@
 /*
- * Crafter Studio Web-content authoring solution
- * Copyright (C) 2007-2016 Crafter Software Corporation.
+ * Copyright (C) 2007-2019 Crafter Software Corporation. All Rights Reserved.
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -25,6 +24,8 @@ public interface SiteFeedMapper {
 
     List<SiteFeed> getSites();
 
+    int countSites();
+
     SiteFeed getSite(Map params);
 
 	boolean createSite(SiteFeed siteFeed);
@@ -37,6 +38,10 @@ public interface SiteFeedMapper {
 
     Integer exists(String siteId);
 
+    Integer existsById(String id);
+
+    Integer existsByName(String name);
+
     int getSitesPerUserQueryTotal(Map params);
 
     List<String> getSitesPerUserQuery(Map params);
@@ -48,4 +53,6 @@ public interface SiteFeedMapper {
     void updatePublishingStatusMessage(Map params);
 
     void updateLastVerifiedGitlogCommitId(Map params);
+
+    List<SiteFeed> getDeletedSites();
 }

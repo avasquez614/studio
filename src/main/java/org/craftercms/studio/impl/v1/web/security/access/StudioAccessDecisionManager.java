@@ -1,6 +1,5 @@
 /*
- * Crafter Studio Web-content authoring solution
- * Copyright (C) 2007-2017 Crafter Software Corporation.
+ * Copyright (C) 2007-2019 Crafter Software Corporation. All Rights Reserved.
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -64,7 +63,7 @@ public class StudioAccessDecisionManager extends AbstractAccessDecisionManager {
             return;
         }
 
-        if (authentication.isAuthenticated()) {
+        if (authentication.isAuthenticated() && !authentication.getPrincipal().equals("anonymousUser")) {
             loggerCrafter.debug("User authenticated allow access");
             return;
         } else {

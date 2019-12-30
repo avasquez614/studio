@@ -1,6 +1,5 @@
 /*
- * Crafter Studio Web-content authoring solution
- * Copyright (C) 2007-2016 Crafter Software Corporation.
+ * Copyright (C) 2007-2019 Crafter Software Corporation. All Rights Reserved.
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -18,7 +17,7 @@
 package org.craftercms.studio.api.v1.service.content;
 
 
-import org.craftercms.studio.api.v1.exception.ServiceException;
+import org.craftercms.studio.api.v1.exception.ServiceLayerException;
 
 import java.util.Map;
 
@@ -30,5 +29,5 @@ public interface ContentItemIdGenerator {
      * @return pair of id and value
      *
      */
-    public Map<String,String> getIds() throws ServiceException;
+    public Map<String,String> getIds() throws ServiceLayerException;
 }

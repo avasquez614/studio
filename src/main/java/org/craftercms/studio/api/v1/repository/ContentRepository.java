@@ -1,39 +1,45 @@
-/*******************************************************************************
- * Crafter Studio Web-content authoring solution
- *     Copyright (C) 2007-2016 Crafter Software Corporation.
+/*
+ * Copyright (C) 2007-2019 Crafter Software Corporation. All Rights Reserved.
  *
- *     This program is free software: you can redistribute it and/or modify
- *     it under the terms of the GNU General Public License as published by
- *     the Free Software Foundation, either version 3 of the License, or
- *     (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
- *     This program is distributed in the hope that it will be useful,
- *     but WITHOUT ANY WARRANTY; without even the implied warranty of
- *     MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- *     GNU General Public License for more details.
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
  *
- *     You should have received a copy of the GNU General Public License
- *     along with this program.  If not, see <http://www.gnu.org/licenses/>.
- ******************************************************************************/
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ */
+
 package org.craftercms.studio.api.v1.repository;
 
 
 import org.craftercms.studio.api.v1.dal.GitLog;
 import org.craftercms.studio.api.v1.exception.ContentNotFoundException;
-import org.craftercms.studio.api.v1.exception.ServiceException;
+import org.craftercms.studio.api.v1.exception.ServiceLayerException;
+import org.craftercms.studio.api.v1.exception.repository.InvalidRemoteRepositoryCredentialsException;
+import org.craftercms.studio.api.v1.exception.repository.InvalidRemoteRepositoryException;
+import org.craftercms.studio.api.v1.exception.repository.InvalidRemoteUrlException;
+import org.craftercms.studio.api.v1.exception.repository.RemoteRepositoryNotBareException;
+import org.craftercms.studio.api.v1.exception.repository.RemoteRepositoryNotFoundException;
 import org.craftercms.studio.api.v1.service.deployment.DeploymentException;
 import org.craftercms.studio.api.v1.to.DeploymentItemTO;
+import org.craftercms.studio.api.v1.to.RemoteRepositoryInfoTO;
 import org.craftercms.studio.api.v1.to.RepoOperationTO;
 import org.craftercms.studio.api.v1.to.VersionTO;
 
 import java.io.InputStream;
-import java.time.ZonedDateTime;
 import java.util.List;
 import java.util.Map;
 
 /**
  * This interface represents the repository layer of Crafter Studio.  All interaction with the backend
  * Store must go through this interface.
+ *
  * @author russdanner
  */
 public interface ContentRepository {
@@ -57,14 +63,23 @@ public interface ContentRepository {
     InputStream getContent(String site, String path) throws ContentNotFoundException;
 
     /**
-     * write content
+     * get file size
      *
      * @param site site id where the operation will be executed
      * @param path path to content
+     * @return Size in bytes
+     */
+    long getContentSize(String site, String path);
+
+    /**
+     * write content
+     *
+     * @param site    site id where the operation will be executed
+     * @param path    path to content
      * @param content stream of content to write
      * @return Commit Id if successful, null otherwise
      */
-    String writeContent(String site, String path, InputStream content) throws ServiceException;
+    String writeContent(String site, String path, InputStream content) throws ServiceLayerException;
 
     /**
      * create a folder
@@ -79,8 +94,8 @@ public interface ContentRepository {
     /**
      * delete content
      *
-     * @param site site id where the operation will be executed
-     * @param path path to content
+     * @param site     site id where the operation will be executed
+     * @param path     path to content
      * @param approver user that approves delete content
      * @return Commit ID if successful, null otherwise
      */
@@ -89,9 +104,9 @@ public interface ContentRepository {
     /**
      * move content from PathA to pathB
      *
-     * @param site site id where the operation will be executed
+     * @param site     site id where the operation will be executed
      * @param fromPath source content
-     * @param toPath target path
+     * @param toPath   target path
      * @return Commit ID if successful, null otherwise
      */
     Map<String, String> moveContent(String site, String fromPath, String toPath);
@@ -99,10 +114,10 @@ public interface ContentRepository {
     /**
      * move content from PathA to pathB
      *
-     * @param site site id where the operation will be executed
+     * @param site     site id where the operation will be executed
      * @param fromPath source content
-     * @param toPath target path
-     * @param newName new file name for rename
+     * @param toPath   target path
+     * @param newName  new file name for rename
      * @return Commit ID if successful, empty string otherwise
      */
     // TODO: SJ: Should refactor to be from path to path without the newName param
@@ -111,9 +126,9 @@ public interface ContentRepository {
     /**
      * copy content from PathA to pathB
      *
-     * @param site site id where the operation will be executed
+     * @param site     site id where the operation will be executed
      * @param fromPath paths to content
-     * @param toPath target path
+     * @param toPath   target path
      * @return Commit ID if successful, empty string otherwise
      */
     String copyContent(String site, String fromPath, String toPath);
@@ -139,8 +154,8 @@ public interface ContentRepository {
     /**
      * create a version
      *
-     * @param site site id where the operation will be executed
-     * @param path location of content
+     * @param site         site id where the operation will be executed
+     * @param path         location of content
      * @param majorVersion true if major
      * @return the created version ID or null on failure
      */
@@ -149,9 +164,9 @@ public interface ContentRepository {
     /**
      * create a version
      *
-     * @param site site id where the operation will be executed
-     * @param path location of content
-     * @param comment version history comment
+     * @param site         site id where the operation will be executed
+     * @param path         location of content
+     * @param comment      version history comment
      * @param majorVersion true if major
      * @return the created version ID or null on failure
      */
@@ -160,8 +175,8 @@ public interface ContentRepository {
     /**
      * revert a version (create a new version based on an old version)
      *
-     * @param site site id where the operation will be executed
-     * @param path - the path of the item to "revert"
+     * @param site    site id where the operation will be executed
+     * @param path    - the path of the item to "revert"
      * @param version - old version ID to base to version on
      * @return Commit ID if successful, empty string otherwise
      */
@@ -170,8 +185,8 @@ public interface ContentRepository {
     /**
      * return a specific version of the content
      *
-     * @param site site id where the operation will be executed
-     * @param path path of the content
+     * @param site    site id where the operation will be executed
+     * @param path    path of the content
      * @param version version to return
      * @return input stream
      */
@@ -216,11 +231,14 @@ public interface ContentRepository {
     /**
      * Create a new site based on a blueprint
      *
-     * @param blueprintName
-     * @param siteId
+     * @param blueprintLocation blueprint location
+     * @param siteId site identifier
+     * @param sandboxBranch sandbox branch name
+     * @param params site parameters
      * @return true if successful, false otherwise
      */
-    boolean createSiteFromBlueprint(String blueprintName, String siteId);
+    boolean createSiteFromBlueprint(String blueprintLocation, String siteId, String sandboxBranch,
+                                    Map<String, String> params);
 
     /**
      * Deletes an existing site.
@@ -234,11 +252,13 @@ public interface ContentRepository {
      * Initial publish to specified environment.
      *
      * @param site
+     * @param sandboxBranch
      * @param environment
      * @param author
      * @param comment
      */
-    void initialPublish(String site, String environment, String author, String comment) throws DeploymentException;
+    void initialPublish(String site, String sandboxBranch, String environment, String author, String comment)
+            throws DeploymentException;
 
     /**
      * Publish content to specified environment.
@@ -248,14 +268,15 @@ public interface ContentRepository {
      * @param author
      * @param comment
      */
-    void publish(String site, List<DeploymentItemTO> deploymentItems, String environment, String author, String comment) throws DeploymentException;
+    void publish(String site, String sandboxBranch, List<DeploymentItemTO> deploymentItems, String environment,
+                 String author, String comment) throws DeploymentException;
 
     /**
      * Get a list of operations since the commit ID provided (compare that commit to HEAD)
      *
-     * @param site site to use
+     * @param site         site to use
      * @param commitIdFrom commit ID to start at
-     * @param commitIdTo commit ID to end at
+     * @param commitIdTo   commit ID to end at
      * @return commit ID of current HEAD, updated operationsSinceCommit
      */
     List<RepoOperationTO> getOperations(String site, String commitIdFrom, String commitIdTo);
@@ -278,17 +299,19 @@ public interface ContentRepository {
 
     /**
      * Get a list of commits for updates on a content
-     * @param site site id
-     * @param path path
+     *
+     * @param site         site id
+     * @param path         path
      * @param commitIdFrom range from commit id (inclusive)
-     * @param commitIdTo range to commit id (inclusive)
+     * @param commitIdTo   range to commit id (inclusive)
      * @return list of edit commit ids
      */
     List<String> getEditCommitIds(String site, String path, String commitIdFrom, String commitIdTo);
 
     /**
      * Check if given commit id exists
-     * @param site site id
+     *
+     * @param site     site id
      * @param commitId commit id to check
      * @return true if it exists in site repository, otherwise false
      */
@@ -296,7 +319,8 @@ public interface ContentRepository {
 
     /**
      * Get git log object from database
-     * @param siteId site id
+     *
+     * @param siteId   site id
      * @param commitId commit ID
      * @return git log object
      */
@@ -304,32 +328,171 @@ public interface ContentRepository {
 
     /**
      * Insert Git Log
-     * @param siteId site
-     * @param commitId commit ID
+     *
+     * @param siteId    site
+     * @param commitId  commit ID
      * @param processed processed
      */
     void insertGitLog(String siteId, String commitId, int processed);
 
     /**
+     * Insert Full Git Log
+     *
+     * @param siteId    site
+     * @param processed processed
+     */
+    void insertFullGitLog(String siteId, int processed);
+
+    /**
      * Mark Git log as verified
-     * @param siteId site identifier
+     *
+     * @param siteId   site identifier
      * @param commitId commit id
      */
     void markGitLogVerifiedProcessed(String siteId, String commitId);
 
-    /*
-    List<PublishTO> getPublishEvents(String site, String commitIdFrom, String commitIdTo);
-    List<PublishTO> getPublishEvents(String site, String commitIdFrom);
-    List<PublishTO> getPublishEvents(String site, Date from, String to);
-    List<PublishTO> getPublishEvents(String site, Date from);
-    List<PublishTO> getPublishEvents(String site);
+    /**
+     * Delete Git log for site
+     *
+     * @param siteId site identifier
+     */
+    void deleteGitLogForSite(String siteId);
 
-    get tags or similar from now to limit
-        get delta from tag to tag
+    /**
+     * Create new site as a clone from remote repository
+     *
+     * @param siteId         site identifier
+     * @param remoteName     remote name
+     * @param remoteUrl      remote repository url
+     * @param remoteUsername remote username
+     * @param remotePassword remote password
+     * @param params         site parameters
+     * @param createAsOrphan create as orphan
+     * @return true if success
+     */
+    boolean createSiteCloneRemote(String siteId, String sandboxBranch, String remoteName, String remoteUrl,
+                                  String remoteBranch, boolean singleBranch, String authenticationType,
+                                  String remoteUsername, String remotePassword, String remoteToken,
+                                  String remotePrivateKey, Map<String, String> params, boolean createAsOrphan)
+            throws InvalidRemoteRepositoryException, InvalidRemoteRepositoryCredentialsException,
+            RemoteRepositoryNotFoundException, InvalidRemoteUrlException, ServiceLayerException;
 
-    dump and resync from git
-    import site from disk
+    /**
+     * Push new site to remote repository
+     *
+     * @param siteId         site identifier
+     * @param remoteName     remote name
+     * @param remoteUrl      remote repository url
+     * @param remoteUsername remote username
+     * @param remotePassword remote password
+     * @param createAsOrphan create as orphan
+     * @return true if success
+     */
+    boolean createSitePushToRemote(String siteId, String remoteName, String remoteUrl, String authenticationType,
+                                   String remoteUsername, String remotePassword, String remoteToken,
+                                   String remotePrivateKey, boolean createAsOrphan)
+            throws InvalidRemoteRepositoryException, InvalidRemoteRepositoryCredentialsException,
+            RemoteRepositoryNotFoundException, RemoteRepositoryNotBareException, ServiceLayerException;
 
-    */
+    /**
+     * Add remote repository for site content repository
+     *
+     * @param siteId             site identifier
+     * @param remoteName         remote name
+     * @param remoteUrl          remote url
+     * @param authenticationType authentication type
+     * @param remoteUsername     remote username
+     * @param remotePassword     remote password
+     * @param remoteToken        remote token
+     * @param remotePrivateKey   remote private key
+     * @return true if operation was successful
+     */
+    boolean addRemote(String siteId, String remoteName, String remoteUrl,
+                      String authenticationType, String remoteUsername, String remotePassword, String remoteToken,
+                      String remotePrivateKey)
+            throws InvalidRemoteUrlException, ServiceLayerException;
 
+    /**
+     * Remove remote with given name for site
+     *
+     * @param siteId     site identifier
+     * @param remoteName remote name
+     * @return true if operation was successful
+     */
+    boolean removeRemote(String siteId, String remoteName);
+
+    /**
+     * Remove all remotes for given site
+     *
+     * @param siteId site identifier
+     */
+    void removeRemoteRepositoriesForSite(String siteId);
+
+    /**
+     * List remote repositories for given site
+     *
+     * @param siteId site identifier
+     * @param sandboxBranch sandbox branch name
+     * @return list of names of remote repositories
+     */
+    List<RemoteRepositoryInfoTO> listRemote(String siteId, String sandboxBranch) throws ServiceLayerException;
+
+    /**
+     * Push content to remote repository
+     *
+     * @param siteId       site identifier
+     * @param remoteName   remote name
+     * @param remoteBranch remote branch
+     * @return true if operation was successful
+     */
+    boolean pushToRemote(String siteId, String remoteName, String remoteBranch) throws ServiceLayerException,
+            InvalidRemoteUrlException;
+
+    /**
+     * Pull from remote repository
+     *
+     * @param siteId       site identifier
+     * @param remoteName   remote name
+     * @param remoteBranch remote branch
+     * @return true if operation was successful
+     */
+    boolean pullFromRemote(String siteId, String remoteName, String remoteBranch) throws ServiceLayerException,
+            InvalidRemoteUrlException;
+
+    /**
+     * Check if content at given path is folder
+     *
+     * @param siteId site identifier
+     * @param path   content path
+     * @return true if path is folder, otherwise false
+     */
+    boolean isFolder(String siteId, String path);
+
+    /**
+     * Reset staging repository to live for given site
+     *
+     * @param siteId site identifier to use for resetting
+     */
+    void resetStagingRepository(String siteId) throws ServiceLayerException;
+
+    /**
+     * Reload repository for given site
+     *
+     * @param siteId site identifier
+     */
+    void reloadRepository(String siteId);
+
+    /**
+     * Performs a cleanup all repositories for the given site
+     * @param siteId site identifier
+     */
+    void cleanupRepositories(String siteId);
+
+    /**
+     * Check if repository exists for  given site
+     *
+     * @param site     site id
+     * @return true if it repository exists, otherwise false
+     */
+    boolean repositoryExists(String site);
 }

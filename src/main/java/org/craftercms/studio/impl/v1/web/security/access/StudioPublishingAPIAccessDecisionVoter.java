@@ -1,6 +1,5 @@
 /*
- * Crafter Studio Web-content authoring solution
- * Copyright (C) 2007-2017 Crafter Software Corporation.
+ * Copyright (C) 2007-2019 Crafter Software Corporation. All Rights Reserved.
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -28,9 +27,9 @@ import net.sf.json.JSONObject;
 import org.apache.commons.fileupload.servlet.ServletFileUpload;
 import org.apache.commons.io.IOUtils;
 import org.apache.commons.lang3.StringUtils;
-import org.craftercms.studio.api.v1.dal.User;
 import org.craftercms.studio.api.v1.log.Logger;
 import org.craftercms.studio.api.v1.log.LoggerFactory;
+import org.craftercms.studio.api.v2.dal.User;
 import org.springframework.http.HttpMethod;
 import org.springframework.security.access.ConfigAttribute;
 import org.springframework.security.core.Authentication;
@@ -102,10 +101,14 @@ public class StudioPublishingAPIAccessDecisionVoter extends StudioAbstractAccess
                     }
                     break;
                 case STATUS:
-                    if (currentUser != null && isSiteMember(siteParam, currentUser)) {
-                        toRet = ACCESS_GRANTED;
+                    if (siteService.exists(siteParam)) {
+                        if (currentUser != null && isSiteMember(siteParam, currentUser)) {
+                            toRet = ACCESS_GRANTED;
+                        } else {
+                            toRet = ACCESS_DENIED;
+                        }
                     } else {
-                        toRet = ACCESS_DENIED;
+                        toRet = ACCESS_ABSTAIN;
                     }
                     break;
                 default:

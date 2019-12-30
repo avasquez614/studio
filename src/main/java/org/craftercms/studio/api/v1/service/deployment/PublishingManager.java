@@ -1,6 +1,5 @@
 /*
- * Crafter Studio Web-content authoring solution
- * Copyright (C) 2007-2016 Crafter Software Corporation.
+ * Copyright (C) 2007-2019 Crafter Software Corporation. All Rights Reserved.
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -18,6 +17,8 @@
 package org.craftercms.studio.api.v1.service.deployment;
 
 import org.craftercms.studio.api.v1.dal.PublishRequest;
+import org.craftercms.studio.api.v1.exception.ServiceLayerException;
+import org.craftercms.studio.api.v1.exception.SiteNotFoundException;
 import org.craftercms.studio.api.v1.to.DeploymentItemTO;
 
 import java.util.List;
@@ -30,19 +31,35 @@ public interface PublishingManager {
 
     List<PublishRequest> getItemsReadyForDeployment(String site, String environment);
 
-    DeploymentItemTO processItem(PublishRequest item) throws DeploymentException;
+    DeploymentItemTO processItem(PublishRequest item) throws DeploymentException, SiteNotFoundException;
 
-    void markItemsCompleted(String site, String environment, List<PublishRequest> processedItems) throws DeploymentException;
+    void markItemsCompleted(String site, String environment, List<PublishRequest> processedItems)
+        throws DeploymentException;
 
-    void markItemsProcessing(String site, String environment, List<PublishRequest> itemsToDeploy) throws DeploymentException;
+    void markItemsProcessing(String site, String environment, List<PublishRequest> itemsToDeploy)
+        throws DeploymentException;
 
-    void markItemsReady(String site, String liveEnvironment, List<PublishRequest> copyToEnvironmentItems) throws DeploymentException;
+    void markItemsReady(String site, String liveEnvironment, List<PublishRequest> copyToEnvironmentItems)
+        throws DeploymentException;
 
-    void markItemsBlocked(String site, String environment, List<PublishRequest> copyToEnvironmentItems) throws DeploymentException;
+    void markItemsBlocked(String site, String environment, List<PublishRequest> copyToEnvironmentItems)
+        throws DeploymentException;
 
-    List<DeploymentItemTO> processMandatoryDependencies(PublishRequest item, Set<String> pathsToDeploy, Set<String> missingDependenciesPaths) throws DeploymentException;
+    List<DeploymentItemTO> processMandatoryDependencies(PublishRequest item, Set<String> pathsToDeploy,
+                                                        Set<String> missingDependenciesPaths)
+            throws DeploymentException, ServiceLayerException;
 
     boolean isPublishingBlocked(String site);
 
     String getPublishingStatus(String site);
+
+    boolean isPublishingQueueEmpty(String site);
+
+    /**
+     * Reset items being in processing state (skip publishing cycle or recover from error)
+     * @param site site to use
+     * @param environment environment to use
+     *
+     */
+    void resetProcessingQueue(String site, String environment);
 }

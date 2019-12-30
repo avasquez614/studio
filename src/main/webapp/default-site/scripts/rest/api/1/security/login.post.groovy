@@ -1,6 +1,5 @@
 /*
- * Crafter Studio Web-content authoring solution
- * Copyright (C) 2007-2017 Crafter Software Corporation.
+ * Copyright (C) 2007-2019 Crafter Software Corporation. All Rights Reserved.
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -19,7 +18,7 @@
 import groovy.json.JsonException
 import groovy.json.JsonSlurper
 import org.craftercms.studio.api.v1.exception.security.BadCredentialsException
-
+import org.craftercms.studio.api.v1.exception.security.UserNotFoundException
 import scripts.api.SecurityServices
 
 def result = [:]
@@ -39,12 +38,13 @@ try {
             def profile = SecurityServices.getUserProfile(context, username)
 
             response.setStatus(200)
-            result = ["username": username, "first_name": profile.first_name, "last_name": profile.last_name, "email": profile.email]
+            result = ["username": username, "firstName": profile.first_name, "lastName": profile.last_name,
+                      "email": profile.email, "authenticationType" : profile.authentication_type]
         } else {
             response.setStatus(500)
             result.message = "Internal server error"
         }
-    } catch (BadCredentialsException e) {
+    } catch (BadCredentialsException | UserNotFoundException e) {
         response.setStatus(401)
         result.message = "Unauthorized"
     } catch (Exception e) {

@@ -1,6 +1,5 @@
 /*
- * Crafter Studio Web-content authoring solution
- * Copyright (C) 2007-2017 Crafter Software Corporation.
+ * Copyright (C) 2007-2019 Crafter Software Corporation. All Rights Reserved.
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -18,7 +17,7 @@
 
 package org.craftercms.studio.api.v1.service.dependency;
 
-import org.craftercms.studio.api.v1.exception.ServiceException;
+import org.craftercms.studio.api.v1.exception.ServiceLayerException;
 import org.dom4j.Document;
 
 import java.util.ArrayList;
@@ -29,10 +28,10 @@ public interface DependencyDiffService {
     /**
      * Computes addedDependenices and removedDependenices based on the DiffRequest information provided
      * @param diffRequest
-     * @return
-     * @throws ServiceException
+     * @return Diff response object
+     * @throws ServiceLayerException
      */
-    DiffResponse diff(DiffRequest diffRequest) throws ServiceException;
+    DiffResponse diff(DiffRequest diffRequest) throws ServiceLayerException;
 
     /**
      *

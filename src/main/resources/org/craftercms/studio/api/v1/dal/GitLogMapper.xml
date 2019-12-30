@@ -1,7 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
-  ~ Crafter Studio Web-content authoring solution
-  ~ Copyright (C) 2007-2017 Crafter Software Corporation.
+  ~ Copyright (C) 2007-2019 Crafter Software Corporation. All Rights Reserved.
   ~
   ~ This program is free software: you can redistribute it and/or modify
   ~ it under the terms of the GNU General Public License as published by
@@ -37,7 +36,18 @@
         VALUES (#{siteId}, #{commitId}, #{processed})
     </insert>
 
+    <insert id="insertGitLogList" parameterType="java.util.Map">
+        INSERT INTO gitlog (site_id, commit_id, processed) VALUES
+        <foreach collection="gitLogs" item="element" index="index" separator="," >
+            (#{element.siteId}, #{element.commitId}, #{element.processed})
+        </foreach>
+    </insert>
+
     <update id="markGitLogProcessed" parameterType="java.util.Map">
         UPDATE gitlog SET processed = #{processed} WHERE site_id = #{siteId} AND commit_id = #{commitId}
     </update>
+
+    <delete id="deleteGitLogForSite" parameterType="java.util.Map">
+        DELETE FROM gitlog WHERE site_id = #{siteId}
+    </delete>
 </mapper>

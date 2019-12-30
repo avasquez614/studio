@@ -1,6 +1,5 @@
 /*
- * Crafter Studio Web-content authoring solution
- * Copyright (C) 2007-2014 Crafter Software Corporation.
+ * Copyright (C) 2007-2019 Crafter Software Corporation. All Rights Reserved.
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -8,7 +7,7 @@
  * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY without even the implied warranty of
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
  *
@@ -170,30 +169,10 @@ class SpringSecurityServices {
         def springBackedService = this.context.applicationContext.get("cstudioSecurityService")
         return springBackedService.removeUserFromGroup(siteId, groupName, username)
     }
-
-    def forgotPassword(username) {
-        def springBackedService = this.context.applicationContext.get("cstudioSecurityService")
-        return springBackedService.forgotPassword(username)
-    }
-
-    def changePassword(username, current, newPassword) {
-        def springBackedService = this.context.applicationContext.get("cstudioSecurityService")
-        return springBackedService.changePassword(username, current, newPassword)
-    }
-
-    def setUserPassword(token, newPassword) {
-        def springBackedService = this.context.applicationContext.get("cstudioSecurityService")
-        return springBackedService.setUserPassword(token, newPassword)
-    }
-
+    
     def validateToken(token) {
         def springBackedService = this.context.applicationContext.get("cstudioSecurityService")
         return springBackedService.validateToken(token)
-    }
-
-    def resetPassword(username, newPassword) {
-        def springBackedService = this.context.applicationContext.get("cstudioSecurityService")
-        return springBackedService.resetPassword(username, newPassword)
     }
 
     def validateSession(request) {

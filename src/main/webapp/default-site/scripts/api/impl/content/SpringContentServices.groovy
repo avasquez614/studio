@@ -1,3 +1,20 @@
+/*
+ * Copyright (C) 2007-2019 Crafter Software Corporation. All Rights Reserved.
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ */
+
 package scripts.api.impl.content
 
 import scripts.api.impl.search.SolrSearch;
@@ -8,6 +25,7 @@ import scripts.api.impl.search.SolrSearch;
 class SpringContentServices {
 
 	static CONTENT_SERVICES_BEAN = "cstudioContentService"
+	static ASSET_PROCESSING_SERVICE_BEAN = "studioAssetProcessingService"
 
 	def context = null
 
@@ -38,30 +56,6 @@ class SpringContentServices {
     }
 
     /**
-     * copy content from PathA to pathB
-     *
-     * @param site - the project ID
-     * @param fromPath paths to content
-     * @param toPath target path
-     */
-    def copyContent(site, fromPath, toPath){
-        def springBackedService = this.context.applicationContext.get(CONTENT_SERVICES_BEAN)
-        return springBackedService.copyContent(site, fromPath, toPath)
-    }
-
-    /**
-     * move content from PathA to pathB
-     *
-     * @param site - the project ID
-     * @param fromPath paths to content
-     * @param toPath target path
-     */
-    def moveContent(site, fromPath, toPath){
-        def springBackedService = this.context.applicationContext.get(CONTENT_SERVICES_BEAN)
-        return springBackedService.moveContent(site, fromPath, toPath)
-    }
-
-    /**
 	 * Write asset
 	 * @param site - the project ID
 	 * @param path - the path to wrtie the content
@@ -69,17 +63,6 @@ class SpringContentServices {
 	 */
 	def writeAsset(site, path, content){
 		throw new Exception("NOT USED")
-	}
-
-	/**
-	 * delete a content item
-     *
-	 * @param site - the projectId
-	 * @param path - the path to delete
-	 */
-	def deleteContent(site, path) {
-        def springBackedService = this.context.applicationContext.get(CONTENT_SERVICES_BEAN)
-        return springBackedService.deleteContent(site, path)
 	}
 
 	/**
@@ -247,8 +230,8 @@ class SpringContentServices {
 	}
 
 	def writeContentAsset(site, path, fileName, content, isImage, allowedWidth, allowedHeight, allowLessSize, draft, unlock, systemAsset) {
-		def springBackendService = this.context.applicationContext.get(CONTENT_SERVICES_BEAN);
-		return springBackendService.writeContentAsset(site, path, fileName, content, isImage, allowedWidth, allowedHeight, allowLessSize, draft, unlock, systemAsset);
+		def springBackendService = this.context.applicationContext.get(ASSET_PROCESSING_SERVICE_BEAN);
+		return springBackendService.processAsset(site, path, fileName, content, isImage, allowedWidth, allowedHeight, allowLessSize, draft, unlock, systemAsset);
 	}
 
     def reorderItems(site, path, before, after) {
@@ -265,5 +248,15 @@ class SpringContentServices {
     def renameFolder(site, path, name){
         def springBackedService = this.context.applicationContext.get(CONTENT_SERVICES_BEAN)
         return springBackedService.renameFolder(site, path, name)
+    }
+
+    def pushToRemote(siteId, remoteName, remoteBranch) {
+        def springBackedService = this.context.applicationContext.get(CONTENT_SERVICES_BEAN)
+        return springBackedService.pushToRemote(siteId, remoteName, remoteBranch)
+    }
+
+    def pullFromRemote(siteId, remoteName, remoteBranch) {
+        def springBackedService = this.context.applicationContext.get(CONTENT_SERVICES_BEAN)
+        return springBackedService.pullFromRemote(siteId, remoteName, remoteBranch)
     }
 }

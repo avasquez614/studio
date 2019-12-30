@@ -1,6 +1,5 @@
 /*
- * Crafter Studio Web-content authoring solution
- * Copyright (C) 2007-2016 Crafter Software Corporation.
+ * Copyright (C) 2007-2019 Crafter Software Corporation. All Rights Reserved.
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -27,8 +26,10 @@ import org.craftercms.studio.api.v1.log.LoggerFactory;
 import org.craftercms.studio.api.v1.service.GeneralLockService;
 import org.craftercms.studio.api.v1.service.configuration.ContentTypesConfig;
 import org.craftercms.studio.api.v1.service.content.ContentService;
-import org.craftercms.studio.api.v1.to.*;
-import org.craftercms.studio.api.v1.util.StudioConfiguration;
+import org.craftercms.studio.api.v1.to.ContentTypeConfigTO;
+import org.craftercms.studio.api.v1.to.CopyDependencyConfigTO;
+import org.craftercms.studio.api.v1.to.DeleteDependencyConfigTO;
+import org.craftercms.studio.api.v2.utils.StudioConfiguration;
 import org.craftercms.studio.impl.v1.service.StudioCacheContext;
 import org.craftercms.studio.impl.v1.util.ContentFormatUtils;
 import org.dom4j.Document;
@@ -38,13 +39,16 @@ import org.dom4j.Node;
 
 import java.time.ZoneOffset;
 import java.time.ZonedDateTime;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
 import java.util.regex.Pattern;
 
 import static org.craftercms.studio.api.v1.constant.StudioConstants.CONTENT_TYPE_UNKNOWN;
 import static org.craftercms.studio.api.v1.constant.StudioConstants.FILE_SEPARATOR;
-import static org.craftercms.studio.api.v1.util.StudioConfiguration.CONFIGURATION_SITE_CONTENT_TYPES_CONFIG_FILE_NAME;
-import static org.craftercms.studio.api.v1.util.StudioConfiguration.CONFIGURATION_SITE_CONTENT_TYPES_CONFIG_PATH;
+import static org.craftercms.studio.api.v2.utils.StudioConfiguration.CONFIGURATION_SITE_CONTENT_TYPES_CONFIG_FILE_NAME;
+import static org.craftercms.studio.api.v2.utils.StudioConfiguration.CONFIGURATION_SITE_CONTENT_TYPES_CONFIG_PATH;
 
 /**
  * @author Dejan Brkic
@@ -53,9 +57,17 @@ public class ContentTypesConfigImpl implements ContentTypesConfig {
 
     private static final Logger logger = LoggerFactory.getLogger(ContentTypesConfigImpl.class);
 
+    private static final String QUICK_CREATE = "quickCreate";
+    private static final String QUICK_CREATE_PATH = "quickCreatePath";
+
+    protected ContentService contentService;
+    protected GeneralLockService generalLockService;
+    protected StudioConfiguration studioConfiguration;
+
     @Override
     @ValidateParams
-    public ContentTypeConfigTO getContentTypeConfig(@ValidateStringParam(name = "site") final String site, @ValidateStringParam(name = "contentType") final String contentType) {
+    public ContentTypeConfigTO getContentTypeConfig(@ValidateStringParam(name = "site") final String site,
+                                                    @ValidateStringParam(name="contentType") final String contentType) {
         if (StringUtils.isNotEmpty(contentType) && !StringUtils.equals(contentType, CONTENT_TYPE_UNKNOWN)) {
             return loadConfiguration(site, contentType);
         } else {
@@ -66,7 +78,8 @@ public class ContentTypesConfigImpl implements ContentTypesConfig {
     @SuppressWarnings("unchecked")
     @Override
     @ValidateParams
-    public ContentTypeConfigTO loadConfiguration(@ValidateStringParam(name = "site") String site, @ValidateStringParam(name = "contentType") String contentType) {
+    public ContentTypeConfigTO loadConfiguration(@ValidateStringParam(name = "site") String site,
+                                                 @ValidateStringParam(name = "contentType") String contentType) {
         String siteConfigPath = getConfigPath().replaceAll(StudioConstants.PATTERN_SITE, site)
                 .replaceAll(StudioConstants.PATTERN_CONTENT_TYPE, contentType);
         String configFileFullPath = siteConfigPath + FILE_SEPARATOR + getConfigFileName();
@@ -109,6 +122,10 @@ public class ContentTypesConfigImpl implements ContentTypesConfig {
             loadCopyDependencyPatterns(contentTypeConfig, root.selectNodes("copy-dependencies/copy-dependency"));
             contentTypeConfig.setLastUpdated(ZonedDateTime.now(ZoneOffset.UTC));
             contentTypeConfig.setType(getContentTypeTypeByName(name));
+            boolean quickCreate = ContentFormatUtils.getBooleanValue(root.valueOf(QUICK_CREATE));
+            contentTypeConfig.setQuickCreate(quickCreate);
+            contentTypeConfig.setQuickCreatePath(root.valueOf(QUICK_CREATE_PATH));
+
             return contentTypeConfig;
         } else {
             logger.debug("No content type configuration document found at " + configFileFullPath);
@@ -136,7 +153,8 @@ public class ContentTypesConfigImpl implements ContentTypesConfig {
                         isRemoveEmptyFolder = Boolean.valueOf(removeEmptyFolder);
                     }
                     if(StringUtils.isNotEmpty(pattern)){
-                        DeleteDependencyConfigTO deleteConfigTO = new DeleteDependencyConfigTO(pattern, isRemoveEmptyFolder);
+                        DeleteDependencyConfigTO deleteConfigTO =
+                                new DeleteDependencyConfigTO(pattern, isRemoveEmptyFolder);
                         deleteConfigs.add(deleteConfigTO);
                     }
                 }
@@ -238,7 +256,8 @@ public class ContentTypesConfigImpl implements ContentTypesConfig {
 
     @Override
     @ValidateParams
-    public ContentTypeConfigTO reloadConfiguration(@ValidateStringParam(name = "site") String site, @ValidateStringParam(name = "contentType") String contentType) {
+    public ContentTypeConfigTO reloadConfiguration(@ValidateStringParam(name = "site") String site,
+                                                   @ValidateStringParam(name = "contentType") String contentType) {
         StudioCacheContext cacheContext = new StudioCacheContext(site, true);
         String siteConfigPath = getConfigPath().replaceAll(StudioConstants.PATTERN_SITE, site)
                 .replaceAll(StudioConstants.PATTERN_CONTENT_TYPE, contentType);
@@ -254,16 +273,27 @@ public class ContentTypesConfigImpl implements ContentTypesConfig {
         return studioConfiguration.getProperty(CONFIGURATION_SITE_CONTENT_TYPES_CONFIG_FILE_NAME);
     }
 
-    public ContentService getContentService() { return contentService; }
-    public void setContentService(ContentService contentService) { this.contentService = contentService; }
+    public ContentService getContentService() {
+        return contentService;
+    }
 
-    public GeneralLockService getGeneralLockService() { return generalLockService; }
-    public void setGeneralLockService(GeneralLockService generalLockService) { this.generalLockService = generalLockService; }
+    public void setContentService(ContentService contentService) {
+        this.contentService = contentService;
+    }
 
-    public StudioConfiguration getStudioConfiguration() { return studioConfiguration; }
-    public void setStudioConfiguration(StudioConfiguration studioConfiguration) { this.studioConfiguration = studioConfiguration; }
+    public GeneralLockService getGeneralLockService() {
+        return generalLockService;
+    }
 
-    protected ContentService contentService;
-    protected GeneralLockService generalLockService;
-    protected StudioConfiguration studioConfiguration;
+    public void setGeneralLockService(GeneralLockService generalLockService) {
+        this.generalLockService = generalLockService;
+    }
+
+    public StudioConfiguration getStudioConfiguration() {
+        return studioConfiguration;
+    }
+
+    public void setStudioConfiguration(StudioConfiguration studioConfiguration) {
+        this.studioConfiguration = studioConfiguration;
+    }
 }

@@ -1,6 +1,5 @@
 /*
- * Crafter Studio Web-content authoring solution
- * Copyright (C) 2007-2016 Crafter Software Corporation.
+ * Copyright (C) 2007-2019 Crafter Software Corporation. All Rights Reserved.
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -18,7 +17,7 @@
 
 package org.craftercms.studio.api.v1.service.content;
 
-import org.craftercms.studio.api.v1.exception.ServiceException;
+import org.craftercms.studio.api.v1.exception.ServiceLayerException;
 import org.craftercms.studio.api.v1.to.ContentTypeConfigTO;
 
 import java.util.List;
@@ -36,7 +35,7 @@ public interface ContentTypeService {
      * @param path
      * @return content type
      */
-    ContentTypeConfigTO getContentTypeForContent(String site, String path) throws ServiceException;
+    ContentTypeConfigTO getContentTypeForContent(String site, String path) throws ServiceLayerException;
 
     /**
      * check if the user is allowed to access the content type with the given user roles
@@ -56,13 +55,14 @@ public interface ContentTypeService {
      */
     ContentTypeConfigTO getContentType(String site, String type);
 
-    ContentTypeConfigTO getContentTypeByRelativePath(String site, String relativePath) throws ServiceException;
+    ContentTypeConfigTO getContentTypeByRelativePath(String site, String relativePath) throws ServiceLayerException;
 
     List<ContentTypeConfigTO> getAllContentTypes(String site, boolean searchable);
 
-    List<ContentTypeConfigTO> getAllowedContentTypesForPath(String site, String relativePath) throws ServiceException;
+    List<ContentTypeConfigTO> getAllowedContentTypesForPath(String site, String relativePath)
+        throws ServiceLayerException;
 
-    boolean changeContentType(String site, String path, String contentType) throws ServiceException;
+    boolean changeContentType(String site, String path, String contentType) throws ServiceLayerException;
 
     void reloadConfiguration(String site);
 

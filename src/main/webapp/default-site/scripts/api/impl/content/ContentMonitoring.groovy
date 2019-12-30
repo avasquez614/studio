@@ -1,6 +1,5 @@
 /*
- * Crafter Studio Web-content authoring solution
- * Copyright (C) 2007-2017 Crafter Software Corporation.
+ * Copyright (C) 2007-2019 Crafter Software Corporation. All Rights Reserved.
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -19,6 +18,7 @@
 package scripts.api.impl.content
 
 import org.apache.commons.lang3.tuple.Pair
+import org.craftercms.studio.model.search.SearchParams
 
 class ContentMonitoring {
 
@@ -47,11 +47,12 @@ class ContentMonitoring {
 		logger.debug("monitoring for expired content for site: " + site)
 
 		def results = [:]
-		def searchService = context.get("crafter.searchService")
+
+		def searchService = context.get("searchServiceInternal")
 		def notificationService = context.get("cstudioNotificationService")
 		def siteService = context.get("cstudioSiteServiceSimple")
 
-		def config = siteService.getConfiguration(site, "/site-config.xml", false);
+		def config = siteService.getConfiguration(site, "site-config.xml", false);
 
 		if(config.contentMonitoring != null && config.contentMonitoring.monitor != null) {
 			if(config.contentMonitoring.monitor instanceof Map) {
@@ -73,14 +74,13 @@ class ContentMonitoring {
 					results.monitors = []
 					def queryStatement = monitor.query
 
-					def query = searchService.createQuery()
-					query = query.setQuery(queryStatement)
-					query = query.setRows(10000)
-					query = query.setDisableAdditionalFilters(true)
+                    def searchParams = new SearchParams()
+                    searchParams.query = queryStatement
+                    searchParams.limit = 10000
 
-					def executedQuery = searchService.search(site, query)
-					def itemsFound = executedQuery.response.numFound
-					def items = executedQuery.response.documents
+					def executedQuery = searchService.search(site, Collections.emptyList(), searchParams)
+					def itemsFound = executedQuery.total
+					def items = executedQuery.items
 					logger.info("content monitor (${monitor.name}) found $itemsFound items")
 
 					monitor.paths.path.each { path ->
@@ -90,11 +90,12 @@ class ContentMonitoring {
 						monitorPathResult.emails = path.emails
 						monitorPathResult.items = []
 						// iterate over the items and prepare notifications
-						items.findAll { it && it.localId =~ path.pattern }.each { item ->
+						items.findAll { it && it.path =~ path.pattern }.each { item ->
 							def notifyItem = [
-									id : item.localId,
-									internalName : item["internal-name"]
+									id : item.path,
+									internalName : item.name
 							]
+							//TODO: Move this logic to search service, maybe add a 'renderUrl' to all items?
 							if(notifyItem.id.contains("/site/website")) {
 								def uri = notifyItem.id.replace("/site/website", "").replace("/index.xml","").replace(".xml", "")
 								notifyItem.url = "$authoringBaseUrl/preview/#/?page=$uri&site=$site".toString()

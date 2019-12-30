@@ -1,6 +1,22 @@
+/*
+ * Copyright (C) 2007-2019 Crafter Software Corporation. All Rights Reserved.
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ */
+
 package org.craftercms.studio.impl.v1.aws.elastictranscoder;
 
-import com.amazonaws.auth.AWSStaticCredentialsProvider;
 import com.amazonaws.services.elastictranscoder.AmazonElasticTranscoder;
 import com.amazonaws.services.elastictranscoder.AmazonElasticTranscoderClientBuilder;
 import com.amazonaws.services.elastictranscoder.model.CreateJobOutput;
@@ -11,20 +27,21 @@ import com.amazonaws.services.elastictranscoder.model.Pipeline;
 import com.amazonaws.services.elastictranscoder.model.ReadPipelineRequest;
 import com.amazonaws.services.elastictranscoder.model.ReadPipelineResult;
 import com.amazonaws.services.s3.AmazonS3;
-import com.amazonaws.services.s3.AmazonS3ClientBuilder;
 
-import java.io.File;
+import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 
 import org.apache.commons.io.FilenameUtils;
 import org.apache.commons.lang3.StringUtils;
+import org.craftercms.commons.file.stores.S3Utils;
 import org.craftercms.studio.api.v1.aws.elastictranscoder.ElasticTranscoder;
 import org.craftercms.studio.api.v1.aws.elastictranscoder.TranscoderJob;
 import org.craftercms.studio.api.v1.aws.elastictranscoder.TranscoderOutput;
 import org.craftercms.studio.api.v1.aws.elastictranscoder.TranscoderProfile;
 import org.craftercms.studio.api.v1.exception.AwsException;
+import org.craftercms.studio.impl.v1.service.aws.AwsUtils;
 
 /**
  * Default implementation of {@link ElasticTranscoder}. Just as indicated by the interface, the video file is first uploaded to the
@@ -36,8 +53,18 @@ import org.craftercms.studio.api.v1.exception.AwsException;
  */
 public class ElasticTranscoderImpl implements ElasticTranscoder {
 
+    protected int partSize;
+
+    public ElasticTranscoderImpl() {
+        partSize = AwsUtils.MIN_PART_SIZE;
+    }
+
+    public void setPartSize(final int partSize) {
+        this.partSize = partSize;
+    }
+
     @Override
-    public TranscoderJob startJob(String filename, File file, TranscoderProfile profile) throws AwsException {
+    public TranscoderJob startJob(String filename, InputStream content, TranscoderProfile profile) throws AwsException {
         try {
             AmazonS3 s3Client = getS3Client(profile);
             AmazonElasticTranscoder transcoderClient = getTranscoderClient(profile);
@@ -45,7 +72,7 @@ public class ElasticTranscoderImpl implements ElasticTranscoder {
             String baseKey = FilenameUtils.removeExtension(filename) + "/" + UUID.randomUUID().toString();
             String inputKey = baseKey + "." + FilenameUtils.getExtension(filename);
 
-            uploadInput(inputKey, file, pipeline, s3Client);
+            uploadInput(inputKey, filename, content, pipeline, s3Client);
 
             CreateJobResult jobResult = createJob(inputKey, baseKey, profile, transcoderClient);
 
@@ -64,10 +91,11 @@ public class ElasticTranscoderImpl implements ElasticTranscoder {
         return result.getPipeline();
     }
 
-    protected void uploadInput(String inputKey, File file, Pipeline pipeline, AmazonS3 s3Client) {
+    protected void uploadInput(String inputKey, String filename, InputStream content, Pipeline pipeline,
+                               AmazonS3 s3Client) throws AwsException {
         String inputBucket = pipeline.getInputBucket();
 
-        s3Client.putObject(inputBucket, inputKey, file);
+        AwsUtils.uploadStream(inputBucket, inputKey, s3Client, partSize, filename, content);
     }
 
     protected CreateJobResult createJob(String inputKey, String baseKey, TranscoderProfile profile,
@@ -88,15 +116,12 @@ public class ElasticTranscoderImpl implements ElasticTranscoder {
     }
 
     protected AmazonS3 getS3Client(TranscoderProfile profile) {
-        return AmazonS3ClientBuilder.standard()
-            .withCredentials(new AWSStaticCredentialsProvider(profile.getCredentials()))
-            .withRegion(profile.getRegion())
-            .build();
+        return S3Utils.createClient(profile);
     }
 
     protected AmazonElasticTranscoder getTranscoderClient(TranscoderProfile profile) {
         return AmazonElasticTranscoderClientBuilder.standard()
-            .withCredentials(new AWSStaticCredentialsProvider(profile.getCredentials()))
+            .withCredentials(profile.getCredentialsProvider())
             .withRegion(profile.getRegion())
             .build();
     }

@@ -1,6 +1,5 @@
 /*
- * Crafter Studio Web-content authoring solution
- * Copyright (C) 2007-2016 Crafter Software Corporation.
+ * Copyright (C) 2007-2019 Crafter Software Corporation. All Rights Reserved.
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -18,12 +17,11 @@
 
 package org.craftercms.studio.impl.v1.executor;
 
-import org.apache.commons.io.IOUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.craftercms.studio.api.v1.constant.StudioConstants;
 import org.craftercms.studio.api.v1.constant.DmConstants;
 import org.craftercms.studio.api.v1.exception.ContentProcessException;
-import org.craftercms.studio.api.v1.exception.ServiceException;
+import org.craftercms.studio.api.v1.exception.ServiceLayerException;
 import org.craftercms.studio.api.v1.executor.ProcessContentExecutor;
 import org.craftercms.studio.api.v1.log.Logger;
 import org.craftercms.studio.api.v1.log.LoggerFactory;
@@ -34,8 +32,6 @@ import org.craftercms.studio.impl.v1.content.pipeline.PipelineContentImpl;
 import org.craftercms.studio.impl.v1.util.ContentUtils;
 import org.craftercms.studio.api.v1.service.security.SecurityService;
 
-import java.io.ByteArrayInputStream;
-import java.io.IOException;
 import java.io.InputStream;
 import java.util.Map;
 
@@ -47,7 +43,8 @@ public class ProcessContentExecutorImpl implements ProcessContentExecutor {
     private static final Logger logger = LoggerFactory.getLogger(ProcessContentExecutorImpl.class);
 
     @Override
-    public ResultTO processContent(String id, InputStream input, boolean isXml, Map<String, String> params, String chainName) throws ServiceException {
+    public ResultTO processContent(String id, InputStream input, boolean isXml, Map<String, String> params,
+                                   String chainName) throws ServiceLayerException {
         final ContentProcessorPipeline chain = processorChains.get(chainName);
         try{
             if (chain != null) {
@@ -56,24 +53,10 @@ public class ProcessContentExecutorImpl implements ProcessContentExecutor {
                     params.put(DmConstants.KEY_USER, user);
                 }
 
-                byte[] inputBytes= null;
-                try {
-                    if (input != null) {
-                        inputBytes = IOUtils.toByteArray(input);
-                    }
-                } catch (IOException e) {
-                    throw new ServiceException("Error while creating byte array",e);
-                }finally{
-                    ContentUtils.release(input);
-                }
-
                 final ResultTO result = new ResultTO();
-                final byte[] inputBytesFinal = inputBytes;
-
-                InputStream newByteArrayStream=null;
                 try {
-                    newByteArrayStream = (inputBytesFinal != null) ? new ByteArrayInputStream(inputBytesFinal) : null;
-                    final PipelineContent content = new PipelineContentImpl(id, newByteArrayStream, isXml, null, StudioConstants.CONTENT_ENCODING, params);
+                    final PipelineContent content = new PipelineContentImpl(id, input, isXml, null,
+                        StudioConstants.CONTENT_ENCODING, params);
                     chain.processContent(content, result);
 
                 } catch (ContentProcessException e) {
@@ -83,13 +66,13 @@ public class ProcessContentExecutorImpl implements ProcessContentExecutor {
                     logger.error("Error in chain for write content", e);
                     throw e;
                 }finally{
-                    ContentUtils.release(newByteArrayStream);
+                    ContentUtils.release(input);
                 }
                 return result;
 
             } else {
                 ContentUtils.release(input);
-                throw new ServiceException(chainName + " is not defined.");
+                throw new ServiceLayerException(chainName + " is not defined.");
             }
         }finally {
             String s = params.get(DmConstants.KEY_USER);

@@ -1,6 +1,5 @@
 /*
- * Crafter Studio Web-content authoring solution
- * Copyright (C) 2007-2016 Crafter Software Corporation.
+ * Copyright (C) 2007-2019 Crafter Software Corporation. All Rights Reserved.
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -17,14 +16,13 @@
  */
 package org.craftercms.studio.impl.v1.util;
 
-import org.craftercms.studio.api.v1.exception.ServiceException;
+import org.craftercms.studio.api.v1.exception.ServiceLayerException;
 import org.craftercms.studio.api.v1.log.Logger;
 import org.craftercms.studio.api.v1.log.LoggerFactory;
 import org.craftercms.studio.api.v1.service.content.ContentService;
 import org.craftercms.studio.api.v1.to.ContentItemTO;
 import org.craftercms.studio.api.v1.util.DmContentItemComparator;
 
-import java.io.File;
 import java.util.List;
 
 import static org.craftercms.studio.api.v1.constant.StudioConstants.FILE_SEPARATOR;
@@ -44,7 +42,7 @@ public class GoLiveQueueOrganizer {
 
     public void addToGoLiveItems(String site, ContentItemTO node,
                                  List<ContentItemTO> categoryItems, DmContentItemComparator comparator,
-                                 boolean includeInProgress, List<String> displayPatterns) throws ServiceException {
+                                 boolean includeInProgress, List<String> displayPatterns) throws ServiceLayerException {
 
 
         // if deleted, just add the top level items

@@ -1,6 +1,5 @@
 /*
- * Crafter Studio Web-content authoring solution
- * Copyright (C) 2007-2016 Crafter Software Corporation.
+ * Copyright (C) 2007-2019 Crafter Software Corporation. All Rights Reserved.
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -22,6 +21,7 @@ import org.craftercms.studio.api.v1.content.pipeline.ContentProcessor;
 import org.craftercms.studio.api.v1.content.pipeline.ContentProcessorPipeline;
 import org.craftercms.studio.api.v1.content.pipeline.PipelineContent;
 import org.craftercms.studio.api.v1.exception.ContentProcessException;
+import org.craftercms.studio.api.v1.exception.SiteNotFoundException;
 import org.craftercms.studio.api.v1.log.Logger;
 import org.craftercms.studio.api.v1.log.LoggerFactory;
 import org.craftercms.studio.api.v1.to.ResultTO;
@@ -43,7 +43,7 @@ public class ContentProcessorPipelineImpl implements ContentProcessorPipeline {
 	 */
 	protected List<ContentProcessor> _chain = null;
 
-	public void processContent(PipelineContent content, ResultTO result) throws ContentProcessException {
+	public void processContent(PipelineContent content, ResultTO result) throws ContentProcessException, SiteNotFoundException {
 		if (_chain != null && _chain.size() > 0) {
 			for (ContentProcessor processor : _chain) {
 				logger.debug("Running " + content.getId() + " through " + processor.getName());

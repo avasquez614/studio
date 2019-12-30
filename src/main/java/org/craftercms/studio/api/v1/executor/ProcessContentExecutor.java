@@ -1,6 +1,5 @@
 /*
- * Crafter Studio Web-content authoring solution
- * Copyright (C) 2007-2016 Crafter Software Corporation.
+ * Copyright (C) 2007-2019 Crafter Software Corporation. All Rights Reserved.
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -18,7 +17,7 @@
 
 package org.craftercms.studio.api.v1.executor;
 
-import org.craftercms.studio.api.v1.exception.ServiceException;
+import org.craftercms.studio.api.v1.exception.ServiceLayerException;
 import org.craftercms.studio.api.v1.to.ResultTO;
 
 import java.io.InputStream;
@@ -29,5 +28,6 @@ import java.util.Map;
  */
 public interface ProcessContentExecutor {
 
-    ResultTO processContent(final String id, final InputStream input, final boolean isXml, final Map<String, String> params, final String chainName) throws ServiceException;
+    ResultTO processContent(final String id, final InputStream input, final boolean isXml,
+                            final Map<String, String> params, final String chainName) throws ServiceLayerException;
 }

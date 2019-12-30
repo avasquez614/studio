@@ -1,6 +1,5 @@
 /*
- * Crafter Studio Web-content authoring solution
- * Copyright (C) 2007-2016 Crafter Software Corporation.
+ * Copyright (C) 2007-2019 Crafter Software Corporation. All Rights Reserved.
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -19,64 +18,105 @@
 package org.craftercms.studio.impl.v1.service.security;
 
 import java.io.IOException;
-import java.io.StringWriter;
-import java.io.Writer;
 import java.nio.charset.StandardCharsets;
 import java.security.InvalidAlgorithmParameterException;
 import java.security.InvalidKeyException;
 import java.security.NoSuchAlgorithmException;
 import java.time.ZoneOffset;
 import java.time.ZonedDateTime;
-import java.util.*;
-import java.util.concurrent.TimeUnit;
-
-import freemarker.template.Template;
-import freemarker.template.TemplateException;
+import java.util.ArrayList;
+import java.util.Base64;
+import java.util.Collection;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.StringTokenizer;
 import org.apache.commons.collections4.CollectionUtils;
+import org.apache.commons.collections4.MapUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.craftercms.commons.http.RequestContext;
-import org.craftercms.commons.validation.annotations.param.*;
-import org.craftercms.studio.api.v1.constant.DmConstants;
+import org.craftercms.commons.validation.annotations.param.ValidateParams;
+import org.craftercms.commons.validation.annotations.param.ValidateSecurePathParam;
+import org.craftercms.commons.validation.annotations.param.ValidateStringParam;
 import org.craftercms.studio.api.v1.constant.StudioConstants;
 import org.craftercms.studio.api.v1.constant.StudioXmlConstants;
-import org.craftercms.studio.api.v1.exception.ServiceException;
+import org.craftercms.studio.api.v1.dal.SiteFeed;
+import org.craftercms.studio.api.v1.ebus.RepositoryEventContext;
+import org.craftercms.studio.api.v1.exception.ServiceLayerException;
 import org.craftercms.studio.api.v1.exception.SiteNotFoundException;
-import org.craftercms.studio.api.v1.exception.security.*;
+import org.craftercms.studio.api.v1.exception.security.PasswordDoesNotMatchException;
+import org.craftercms.studio.api.v1.exception.security.UserExternallyManagedException;
+import org.craftercms.studio.api.v1.exception.security.UserNotFoundException;
+import org.craftercms.studio.api.v1.job.CronJobContext;
 import org.craftercms.studio.api.v1.log.Logger;
 import org.craftercms.studio.api.v1.log.LoggerFactory;
 import org.craftercms.studio.api.v1.service.GeneralLockService;
-import org.craftercms.studio.api.v1.service.activity.ActivityService;
 import org.craftercms.studio.api.v1.service.content.ContentService;
 import org.craftercms.studio.api.v1.service.content.ContentTypeService;
-import org.craftercms.studio.api.v1.service.security.SecurityProvider;
 import org.craftercms.studio.api.v1.service.security.SecurityService;
 import org.craftercms.studio.api.v1.service.security.UserDetailsManager;
+import org.craftercms.studio.api.v1.service.site.SiteService;
 import org.craftercms.studio.api.v1.to.ContentTypeConfigTO;
 import org.craftercms.studio.api.v1.to.PermissionsConfigTO;
-import org.craftercms.studio.api.v1.util.StudioConfiguration;
+import org.craftercms.studio.api.v2.dal.AuditLog;
+import org.craftercms.studio.api.v2.dal.Group;
+import org.craftercms.studio.api.v2.dal.User;
+import org.craftercms.studio.api.v2.service.audit.internal.AuditServiceInternal;
+import org.craftercms.studio.api.v2.service.config.ConfigurationService;
+import org.craftercms.studio.api.v2.service.security.AuthenticationChain;
+import org.craftercms.studio.api.v2.service.security.GroupService;
+import org.craftercms.studio.api.v2.service.security.internal.UserServiceInternal;
+import org.craftercms.studio.api.v2.utils.StudioConfiguration;
 import org.craftercms.studio.impl.v1.util.SessionTokenUtils;
+import org.craftercms.studio.impl.v2.service.security.Authentication;
 import org.dom4j.Document;
 import org.dom4j.DocumentException;
 import org.dom4j.Element;
 import org.dom4j.Node;
 import org.springframework.beans.factory.ObjectFactory;
 import org.springframework.mail.javamail.JavaMailSender;
-import org.springframework.mail.javamail.MimeMessageHelper;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.web.servlet.view.freemarker.FreeMarkerConfig;
 
-import javax.crypto.*;
+import javax.crypto.BadPaddingException;
+import javax.crypto.Cipher;
+import javax.crypto.IllegalBlockSizeException;
+import javax.crypto.NoSuchPaddingException;
 import javax.crypto.spec.IvParameterSpec;
 import javax.crypto.spec.SecretKeySpec;
-import javax.mail.MessagingException;
-import javax.mail.internet.MimeMessage;
 import javax.servlet.http.HttpServletRequest;
+import javax.servlet.http.HttpServletResponse;
 import javax.servlet.http.HttpSession;
 
 import static org.craftercms.studio.api.v1.constant.SecurityConstants.KEY_EMAIL;
 import static org.craftercms.studio.api.v1.constant.SecurityConstants.KEY_EXTERNALLY_MANAGED;
+import static org.craftercms.studio.api.v1.constant.SecurityConstants.KEY_FIRSTNAME;
+import static org.craftercms.studio.api.v1.constant.SecurityConstants.KEY_LASTNAME;
+import static org.craftercms.studio.api.v1.constant.SecurityConstants.KEY_USERNAME;
+import static org.craftercms.studio.api.v1.constant.StudioConstants.ADMIN_ROLE;
 import static org.craftercms.studio.api.v1.constant.StudioConstants.FILE_SEPARATOR;
-import static org.craftercms.studio.api.v1.util.StudioConfiguration.*;
+import static org.craftercms.studio.api.v1.constant.StudioConstants.HTTP_SESSION_ATTRIBUTE_AUTHENTICATION;
+import static org.craftercms.studio.api.v1.constant.StudioConstants.MODULE_STUDIO;
+import static org.craftercms.studio.api.v1.constant.StudioConstants.SECURITY_AUTHENTICATION_TYPE;
+import static org.craftercms.studio.api.v1.constant.StudioConstants.SYSTEM_ADMIN_GROUP;
+import static org.craftercms.studio.api.v2.dal.AuditLogConstants.OPERATION_LOGOUT;
+import static org.craftercms.studio.api.v2.dal.AuditLogConstants.TARGET_TYPE_USER;
+import static org.craftercms.studio.api.v2.utils.StudioConfiguration.CONFIGURATION_ENVIRONMENT_ACTIVE;
+import static org.craftercms.studio.api.v2.utils.StudioConfiguration.CONFIGURATION_GLOBAL_CONFIG_BASE_PATH;
+import static org.craftercms.studio.api.v2.utils.StudioConfiguration.CONFIGURATION_GLOBAL_PERMISSION_MAPPINGS_FILE_NAME;
+import static org.craftercms.studio.api.v2.utils.StudioConfiguration.CONFIGURATION_GLOBAL_ROLE_MAPPINGS_FILE_NAME;
+import static org.craftercms.studio.api.v2.utils.StudioConfiguration.CONFIGURATION_GLOBAL_SYSTEM_SITE;
+import static org.craftercms.studio.api.v2.utils.StudioConfiguration.CONFIGURATION_SITE_PERMISSION_MAPPINGS_FILE_NAME;
+import static org.craftercms.studio.api.v2.utils.StudioConfiguration.CONFIGURATION_SITE_ROLE_MAPPINGS_FILE_NAME;
+import static org.craftercms.studio.api.v2.utils.StudioConfiguration.MAIL_FROM_DEFAULT;
+import static org.craftercms.studio.api.v2.utils.StudioConfiguration.MAIL_SMTP_AUTH;
+import static org.craftercms.studio.api.v2.utils.StudioConfiguration.SECURITY_CIPHER_ALGORITHM;
+import static org.craftercms.studio.api.v2.utils.StudioConfiguration.SECURITY_CIPHER_KEY;
+import static org.craftercms.studio.api.v2.utils.StudioConfiguration.SECURITY_CIPHER_TYPE;
+import static org.craftercms.studio.api.v2.utils.StudioConfiguration.SECURITY_SESSION_TIMEOUT;
+import static org.craftercms.studio.api.v2.utils.StudioConfiguration.SECURITY_TYPE;
 
 /**
  * @author Dejan Brkic
@@ -85,9 +125,7 @@ public class SecurityServiceImpl implements SecurityService {
 
     private static final Logger logger = LoggerFactory.getLogger(SecurityServiceImpl.class);
 
-    protected SecurityProvider securityProvider;
     protected ContentTypeService contentTypeService;
-    protected ActivityService activityService;
     protected ContentService contentService;
     protected GeneralLockService generalLockService;
     protected StudioConfiguration studioConfiguration;
@@ -95,51 +133,109 @@ public class SecurityServiceImpl implements SecurityService {
     protected JavaMailSender emailServiceNoAuth;
     protected UserDetailsManager userDetailsManager;
     protected ObjectFactory<FreeMarkerConfig> freeMarkerConfig;
+    protected GroupService groupService;
+    protected UserServiceInternal userServiceInternal;
+    protected AuthenticationChain authenticationChain;
+    protected ConfigurationService configurationService;
+    protected AuditServiceInternal auditServiceInternal;
+    protected SiteService siteService;
 
     @Override
     @ValidateParams
-    public String authenticate(@ValidateStringParam(name = "username") String username, @ValidateStringParam(name = "password") String password) throws BadCredentialsException, AuthenticationSystemException {
-        String toRet = securityProvider.authenticate(username, password);
-        if (StringUtils.isNotEmpty(toRet)) {
-            RequestContext requestContext = RequestContext.getCurrent();
-            HttpServletRequest httpServletRequest = requestContext.getRequest();
-            String ipAddress = httpServletRequest.getRemoteAddr();
+    public String authenticate(@ValidateStringParam(name = "username") String username,
+                               @ValidateStringParam(name = "password") String password) throws Exception {
+        RequestContext requestContext = RequestContext.getCurrent();
+        HttpServletRequest request = requestContext.getRequest();
+        HttpServletResponse response = requestContext.getResponse();
+        authenticationChain.doAuthenticate(request, response, username, password);
+        return getCurrentToken();
+    }
 
-            ActivityService.ActivityType activityType = ActivityService.ActivityType.LOGIN;
-            Map<String, String> extraInfo = new HashMap<String, String>();
-            extraInfo.put(DmConstants.KEY_CONTENT_TYPE, StudioConstants.CONTENT_TYPE_USER);
-            activityService.postActivity(getSystemSite(), username, ipAddress, activityType, ActivityService.ActivitySource.UI, extraInfo);
+    @Override
+    @ValidateParams
+    public boolean validateTicket(@ValidateStringParam(name = "ticket") String ticket) {
+        if (ticket == null) {
+            ticket = getCurrentToken();
+        }
+        boolean valid = false;
+        if (StringUtils.isNotEmpty(ticket)) valid = true;
+        return valid;
+    }
 
-            logger.info("User " + username + " logged in from IP: " + ipAddress);
+    @Override
+    public String getCurrentUser() {
+        String username = null;
+        RequestContext context = RequestContext.getCurrent();
+
+        if(context != null) {
+            HttpSession httpSession = context.getRequest().getSession();
+            Authentication auth = (Authentication) httpSession.getAttribute(HTTP_SESSION_ATTRIBUTE_AUTHENTICATION);
+
+            if (auth != null) {
+                username = auth.getUsername();
+            }
+        } else {
+            CronJobContext cronJobContext = CronJobContext.getCurrent();
+
+            if (cronJobContext != null) {
+                username = cronJobContext.getCurrentUser();
+            } else {
+                RepositoryEventContext repositoryEventContext = RepositoryEventContext.getCurrent();
+                if (repositoryEventContext != null) {
+                    username = repositoryEventContext.getCurrentUser();
+                }
+            }
+        }
+
+        return username;
+    }
+
+    @Override
+    public String getCurrentToken() {
+        String ticket = null;
+        RequestContext context = RequestContext.getCurrent();
+
+        if (context != null) {
+            HttpSession httpSession = context.getRequest().getSession();
+            Authentication auth = (Authentication) httpSession.getAttribute(HTTP_SESSION_ATTRIBUTE_AUTHENTICATION);
+
+            if (auth != null) {
+                ticket = auth.getToken();
+            }
+        } else {
+            ticket = getJobOrEventTicket();
+        }
+
+        if (ticket == null) {
+            ticket = "NOTICKET";
+        }
+
+        return ticket;
+    }
+
+    @Override
+    @ValidateParams
+    public Map<String,Object> getUserProfile(@ValidateStringParam(name = "user") String user)
+            throws ServiceLayerException, UserNotFoundException {
+        Map<String, Object> toRet = new HashMap<String, Object>();
+        User u = userServiceInternal.getUserByIdOrUsername(-1, user);
+        if (u != null) {
+            toRet.put(KEY_USERNAME, user);
+            toRet.put(KEY_FIRSTNAME, u.getFirstName());
+            toRet.put(KEY_LASTNAME, u.getLastName());
+            toRet.put(KEY_EMAIL, u.getEmail());
+            toRet.put(KEY_EXTERNALLY_MANAGED, u.isExternallyManaged());
+            String authenticationType = studioConfiguration.getProperty(SECURITY_TYPE);
+            toRet.put(SECURITY_AUTHENTICATION_TYPE, authenticationType);
         }
         return toRet;
     }
 
     @Override
     @ValidateParams
-    public boolean validateTicket(@ValidateStringParam(name = "token") String token) {
-        return securityProvider.validateTicket(token);
-    }
-
-    @Override
-    public String getCurrentUser() {
-        return securityProvider.getCurrentUser();
-    }
-
-    @Override
-    public String getCurrentToken() {
-        return securityProvider.getCurrentToken();
-    }
-
-    @Override
-    @ValidateParams
-    public Map<String,Object> getUserProfile(@ValidateStringParam(name = "user") String user) {
-        return securityProvider.getUserProfile(user);
-    }
-
-    @Override
-    @ValidateParams
-    public Set<String> getUserPermissions(@ValidateStringParam(name = "site") final String site, @ValidateSecurePathParam(name = "path") String path, @ValidateStringParam(name = "user") String user, List<String> groups) {
+    public Set<String> getUserPermissions(@ValidateStringParam(name = "site") final String site,
+                                          @ValidateSecurePathParam(name = "path") String path,
+                                          @ValidateStringParam(name = "user") String user, List<String> groups) {
         Set<String> permissions = new HashSet<String>();
         if (StringUtils.isNotEmpty(site)) {
             PermissionsConfigTO rolesConfig = loadConfiguration(site, getRoleMappingsFileName());
@@ -156,13 +252,15 @@ public class SecurityServiceImpl implements SecurityService {
                     ContentTypeConfigTO config = contentTypeService.getContentTypeForContent(site, path);
                     boolean isAllowed = contentTypeService.isUserAllowed(roles, config);
                     if (!isAllowed) {
-                        logger.debug("The user is not allowed to access " + site + ":" + path + ". adding permission: " + StudioConstants.PERMISSION_VALUE_NOT_ALLOWED);
+                        logger.debug("The user is not allowed to access " + site + ":" + path
+                                + ". adding permission: " + StudioConstants.PERMISSION_VALUE_NOT_ALLOWED);
                         // If no default role is set
                         permissions.add(StudioConstants.PERMISSION_VALUE_NOT_ALLOWED);
                         return permissions;
                     }
-                } catch (ServiceException e) {
-                    logger.debug("Error while getting the content type of " + path + ". skipping user role checking on the content.");
+                } catch (ServiceLayerException e) {
+                    logger.debug("Error while getting the content type of " + path
+                            + ". skipping user role checking on the content.");
                 }
             }
         }
@@ -177,16 +275,20 @@ public class SecurityServiceImpl implements SecurityService {
     }
 
     protected void addGlobalUserRoles(String user, Set<String> roles, PermissionsConfigTO rolesConfig) {
-        Set<String> groups = securityProvider.getUserGroups(user);
-        if (rolesConfig != null && groups != null) {
-            Map<String, List<String>> rolesMap = rolesConfig.getRoles();
-            for (String group : groups) {
-                String groupName = group.replaceFirst("GROUP_", "");
-                List<String> userRoles = rolesMap.get(groupName);
-                if (roles != null && userRoles != null) {
-                    roles.addAll(userRoles);
+        try {
+            List<Group> groups = userServiceInternal.getUserGroups(-1, user);
+            if (rolesConfig != null && groups != null) {
+                Map<String, List<String>> rolesMap = rolesConfig.getRoles();
+                for (Group group : groups) {
+                    String groupName = group.getGroupName();
+                    List<String> userRoles = rolesMap.get(groupName);
+                    if (roles != null && userRoles != null) {
+                        roles.addAll(userRoles);
+                    }
                 }
             }
+        } catch (ServiceLayerException | UserNotFoundException e) {
+            logger.error("Unable to retrieve user groups for user {0}", user);
         }
     }
 
@@ -225,27 +327,32 @@ public class SecurityServiceImpl implements SecurityService {
                             if (path.matches(regex)) {
                                 logger.debug("Global permissions found by matching " + regex + " for " + role);
 
-                                List<Node> permissionNodes = ruleNode.selectNodes(StudioXmlConstants.DOCUMENT_ELM_ALLOWED_PERMISSIONS);
+                                List<Node> permissionNodes =
+                                        ruleNode.selectNodes(StudioXmlConstants.DOCUMENT_ELM_ALLOWED_PERMISSIONS);
                                 for (Node permissionNode : permissionNodes) {
                                     String permission = permissionNode.getText().toLowerCase();
-                                    logger.debug("adding global permissions " + permission + " to " + path + " for " + role);
+                                    logger.debug("adding global permissions " + permission + " to " + path
+                                            + " for " + role);
                                     permissions.add(permission);
                                 }
                             }
                         }
                     } else {
-                        logger.debug("No default role is set. adding default permission: " + StudioConstants.PERMISSION_VALUE_READ);
+                        logger.debug("No default role is set. adding default permission: "
+                                + StudioConstants.PERMISSION_VALUE_READ);
                         // If no default role is set
                         permissions.add(StudioConstants.PERMISSION_VALUE_READ);
                     }
                 } else {
-                    logger.debug("No default site is set. adding default permission: " + StudioConstants.PERMISSION_VALUE_READ);
+                    logger.debug("No default site is set. adding default permission: "
+                            + StudioConstants.PERMISSION_VALUE_READ);
                     // If no default site is set
                     permissions.add(StudioConstants.PERMISSION_VALUE_READ);
                 }
             }
         } else {
-            logger.debug("No user or group matching found. adding default permission: " + StudioConstants.PERMISSION_VALUE_READ);
+            logger.debug("No user or group matching found. adding default permission: "
+                    + StudioConstants.PERMISSION_VALUE_READ);
             // If user or group did not match the roles-mapping file
             permissions.add(StudioConstants.PERMISSION_VALUE_READ);
         }
@@ -274,29 +381,45 @@ public class SecurityServiceImpl implements SecurityService {
 
     @Override
     @ValidateParams
-    public Set<String> getUserRoles(@ValidateStringParam(name = "site") final String site, @ValidateStringParam(name = "user") String user) {
+    public Set<String> getUserRoles(@ValidateStringParam(name = "site") final String site,
+                                    @ValidateStringParam(name = "user") String user) {
+        try {
+            // TODO: We should replace this with userService.getUserSiteRoles, but that one is protected by permissions.
+            // TODO: When the UserService is refactored to use UserServiceInternal, we could use that method and
+            // TODO: remove this one
+            List<Group> groups = userServiceInternal.getUserGroups(-1, user);
+            if (groups != null && groups.size() > 0) {
+                logger.debug("Groups for " + user + " in " + site + ": " + groups);
 
-        Set<String> groups = securityProvider.getUserGroups(user);
-        if (groups != null && groups.size() > 0) {
-            logger.debug("Groups for " + user + " in " + site + ": " + groups);
-
-            PermissionsConfigTO rolesConfig = loadConfiguration(site, getRoleMappingsFileName());
-            Set<String> userRoles = new HashSet<String>();
-            if (rolesConfig != null) {
-                Map<String, List<String>> rolesMap = rolesConfig.getRoles();
-                for (String group : groups) {
-                    String groupName = group.replaceFirst("GROUP_", "");
-                    List<String> roles = rolesMap.get(groupName);
-                    if (roles != null) {
-                        userRoles.addAll(roles);
+                PermissionsConfigTO rolesConfig = loadConfiguration(site, getRoleMappingsFileName());
+                Set<String> userRoles = new HashSet<String>();
+                if (rolesConfig != null) {
+                    Map<String, List<String>> rolesMap = rolesConfig.getRoles();
+                    for (Group group : groups) {
+                        String groupName = group.getGroupName();
+                        if (StringUtils.equals(groupName, SYSTEM_ADMIN_GROUP)) {
+                            Collection<List<String>> mapValues = rolesMap.values();
+                            mapValues.forEach(valueList -> {
+                                userRoles.addAll(valueList);
+                            });
+                            break;
+                        } else {
+                            List<String> roles = rolesMap.get(groupName);
+                            if (roles != null) {
+                                userRoles.addAll(roles);
+                            }
+                        }
                     }
                 }
+                return userRoles;
+            } else {
+                logger.debug("No groups found for " + user + " in " + site);
             }
-            return userRoles;
-        } else {
-            logger.debug("No groups found for " + user + " in " + site);
+        } catch (ServiceLayerException | UserNotFoundException e) {
+            logger.error("Error while getting groups for user {0}", e);
         }
-        return new HashSet<String>(0);
+
+        return new HashSet<>(0);
     }
 
     /**
@@ -306,7 +429,8 @@ public class SecurityServiceImpl implements SecurityService {
      * @param groups
      * @param rolesConfig
      */
-    protected void addGroupRoles(Set<String> roles, String site, List<String> groups, PermissionsConfigTO rolesConfig) {
+    protected void addGroupRoles(Set<String> roles, String site, List<String> groups,
+                                 PermissionsConfigTO rolesConfig) {
         if (groups != null) {
             Map<String, List<String>> rolesMap = rolesConfig.getRoles();
             for (String group : groups) {
@@ -347,29 +471,35 @@ public class SecurityServiceImpl implements SecurityService {
                         for (Node ruleNode : ruleNodes) {
                             String regex = ruleNode.valueOf(StudioXmlConstants.DOCUMENT_ATTR_REGEX);
                             if (path.matches(regex)) {
-                                logger.debug("Permissions found by matching " + regex + " for " + role + " in " + site);
+                                logger.debug("Permissions found by matching " + regex + " for " + role
+                                        + " in " + site);
 
-                                List<Node> permissionNodes = ruleNode.selectNodes(StudioXmlConstants.DOCUMENT_ELM_ALLOWED_PERMISSIONS);
+                                List<Node> permissionNodes = ruleNode.selectNodes(
+                                        StudioXmlConstants.DOCUMENT_ELM_ALLOWED_PERMISSIONS);
                                 for (Node permissionNode : permissionNodes) {
                                     String permission = permissionNode.getText().toLowerCase();
-                                    logger.debug("adding permissions " + permission + " to " + path + " for " + role + " in " + site);
+                                    logger.debug("adding permissions " + permission + " to " + path + " for "
+                                            + role + " in " + site);
                                     permissions.add(permission);
                                 }
                             }
                         }
                     } else {
-                        logger.debug("No default role is set. adding default permission: " + StudioConstants.PERMISSION_VALUE_READ);
+                        logger.debug("No default role is set. adding default permission: "
+                                + StudioConstants.PERMISSION_VALUE_READ);
                         // If no default role is set
                         permissions.add(StudioConstants.PERMISSION_VALUE_READ);
                     }
                 } else {
-                    logger.debug("No default site is set. adding default permission: " + StudioConstants.PERMISSION_VALUE_READ);
+                    logger.debug("No default site is set. adding default permission: "
+                            + StudioConstants.PERMISSION_VALUE_READ);
                     // If no default site is set
                     permissions.add(StudioConstants.PERMISSION_VALUE_READ);
                 }
             }
         } else {
-            logger.debug("No user or group matching found. adding default permission: " + StudioConstants.PERMISSION_VALUE_READ);
+            logger.debug("No user or group matching found. adding default permission: "
+                    + StudioConstants.PERMISSION_VALUE_READ);
             // If user or group did not match the roles-mapping file
             permissions.add(StudioConstants.PERMISSION_VALUE_READ);
         }
@@ -377,13 +507,12 @@ public class SecurityServiceImpl implements SecurityService {
     }
 
     protected PermissionsConfigTO loadConfiguration(String site, String filename) {
-        String siteConfigPath = getConfigPath().replaceFirst(StudioConstants.PATTERN_SITE, site);
-        String siteConfigFullPath = siteConfigPath + FILE_SEPARATOR + filename;
         Document document = null;
         PermissionsConfigTO config = null;
         try {
-            document = contentService.getContentAsDocument(site, siteConfigFullPath);
-        } catch (DocumentException e) {
+            document = configurationService.getConfigurationAsDocument(site, MODULE_STUDIO, filename,
+                    studioConfiguration.getProperty(CONFIGURATION_ENVIRONMENT_ACTIVE));
+        } catch (DocumentException | IOException e) {
             logger.error("Permission mapping not found for " + site + ":" + filename);
         }
         if (document != null) {
@@ -462,18 +591,6 @@ public class SecurityServiceImpl implements SecurityService {
         }
     }
 
-    @Override
-    @ValidateParams
-    public void addUserGroup(@ValidateStringParam(name = "groupName") String groupName) {
-        securityProvider.addUserGroup(groupName);
-    }
-
-    @Override
-    @ValidateParams
-    public void addUserGroup(@ValidateStringParam(name = "parentGroup") String parentGroup, @ValidateStringParam(name = "groupName") String groupName) {
-        securityProvider.addUserGroup(parentGroup, groupName);
-    }
-
 
     protected PermissionsConfigTO loadGlobalPermissionsConfiguration() {
         String globalPermissionsConfigPath = getGlobalConfigPath() + FILE_SEPARATOR + getGlobalPermissionsFileName();
@@ -544,9 +661,9 @@ public class SecurityServiceImpl implements SecurityService {
     }
 
     @Override
-    public boolean logout() {
+    public boolean logout() throws SiteNotFoundException {
         String username = getCurrentUser();
-        boolean toRet = securityProvider.logout();
+        deleteAuthentication();
         RequestContext context = RequestContext.getCurrent();
         if (context != null) {
             HttpServletRequest httpServletRequest = context.getRequest();
@@ -556,263 +673,52 @@ public class SecurityServiceImpl implements SecurityService {
             httpSession.removeAttribute(STUDIO_SESSION_TOKEN_ATRIBUTE);
             httpSession.invalidate();
 
-            ActivityService.ActivityType activityType = ActivityService.ActivityType.LOGOUT;
-            Map<String, String> extraInfo = new HashMap<String, String>();
-            extraInfo.put(DmConstants.KEY_CONTENT_TYPE, StudioConstants.CONTENT_TYPE_USER);
-            activityService.postActivity(getSystemSite(), username, ipAddress, activityType, ActivityService.ActivitySource.UI, extraInfo);
+            SiteFeed siteFeed = siteService.getSite(studioConfiguration.getProperty(CONFIGURATION_GLOBAL_SYSTEM_SITE));
+            AuditLog auditLog = auditServiceInternal.createAuditLogEntry();
+            auditLog.setOperation(OPERATION_LOGOUT);
+            auditLog.setActorId(username);
+            auditLog.setSiteId(siteFeed.getId());
+            auditLog.setPrimaryTargetId(username);
+            auditLog.setPrimaryTargetType(TARGET_TYPE_USER);
+            auditLog.setPrimaryTargetValue(username);
+            auditServiceInternal.insertAuditLog(auditLog);
 
             logger.info("User " + username + " logged out from IP: " + ipAddress);
         }
-        return toRet;
+        return true;
     }
 
-    @Override
-    @ValidateParams
-    public boolean createUser(@ValidateNoTagsParam(name = "username") String username, @ValidateStringParam(name = "password") String password, @ValidateNoTagsParam(name = "firstName") String firstName, @ValidateNoTagsParam(name = "lastName") String lastName, @ValidateNoTagsParam(name = "email") String email) throws UserAlreadyExistsException {
-        boolean toRet = securityProvider.createUser(username, password, firstName, lastName, email, false);
-        if (toRet) {
-            ActivityService.ActivityType activityType = ActivityService.ActivityType.CREATED;
-            String user = getCurrentUser();
-            Map<String, String> extraInfo = new HashMap<String, String>();
-            extraInfo.put(DmConstants.KEY_CONTENT_TYPE, StudioConstants.CONTENT_TYPE_USER);
-            activityService.postActivity(getSystemSite(), user, username, activityType, ActivityService.ActivitySource.UI, extraInfo);
-        }
-        return toRet;
-    }
-
-    @Override
-    @ValidateParams
-    public boolean deleteUser(@ValidateStringParam(name = "username") String username) throws UserNotFoundException, DeleteUserNotAllowedException {
-        if (!isDeleteUserAllowed(username)) {
-            throw new DeleteUserNotAllowedException();
-        } else {
-            boolean toRet = securityProvider.deleteUser(username);
-            if (toRet) {
-                ActivityService.ActivityType activityType = ActivityService.ActivityType.DELETED;
-                String user = getCurrentUser();
-                Map<String, String> extraInfo = new HashMap<String, String>();
-                extraInfo.put(DmConstants.KEY_CONTENT_TYPE, StudioConstants.CONTENT_TYPE_USER);
-                activityService.postActivity(getSystemSite(), user, username, activityType, ActivityService.ActivitySource.UI, extraInfo);
-            }
-            return toRet;
+    protected void deleteAuthentication() {
+        RequestContext context = RequestContext.getCurrent();
+        if(context != null) {
+            HttpSession httpSession = context.getRequest().getSession();
+            httpSession.removeAttribute(HTTP_SESSION_ATTRIBUTE_AUTHENTICATION);
         }
     }
 
-    private boolean isDeleteUserAllowed(String username) throws UserNotFoundException {
-        boolean toRet = true;
 
-        // check if it is current user - not allowed to delete current user
-        if (toRet) {
-            toRet = !StringUtils.equals(username, getCurrentUser());
-        }
-
-        // check if it is system user - not allowed to delete system user
-        if (toRet) {
-            toRet = !securityProvider.isSystemUser(username);
-        }
-
-        // check if it is admin - not allowed to delete admin
-        if (toRet) {
-            toRet = !isAdmin(username);
-        }
-
-        return toRet;
+    @Override
+    public int getAllUsersTotal() throws ServiceLayerException {
+        return userServiceInternal.getAllUsersTotal();
     }
+
 
     @Override
     @ValidateParams
-    public boolean updateUser(@ValidateStringParam(name = "username") String username, @ValidateNoTagsParam(name = "firstName") String firstName, @ValidateNoTagsParam(name = "lastName") String lastName, @ValidateNoTagsParam(name = "email") String email) throws UserNotFoundException, UserExternallyManagedException {
-        boolean toRet = securityProvider.updateUser(username, firstName, lastName, email);
-        if (toRet) {
-            ActivityService.ActivityType activityType = ActivityService.ActivityType.UPDATED;
-            String user = getCurrentUser();
-            Map<String, String> extraInfo = new HashMap<String, String>();
-            extraInfo.put(DmConstants.KEY_CONTENT_TYPE, StudioConstants.CONTENT_TYPE_USER);
-            activityService.postActivity(getSystemSite(), user, username, activityType, ActivityService.ActivitySource.UI, extraInfo);
-        }
-        return toRet;
-    }
-
-    @Override
-    @ValidateParams
-    public boolean enableUser(@ValidateStringParam(name = "username") String username, boolean enabled) throws UserNotFoundException, UserExternallyManagedException {
-        return securityProvider.enableUser(username, enabled);
-    }
-
-    @Override
-    @ValidateParams
-    public Map<String, Object> getUserStatus(@ValidateStringParam(name = "username") String username) throws UserNotFoundException {
-        return securityProvider.getUserStatus(username);
-    }
-
-    @Override
-    @ValidateParams
-    public List<Map<String, Object>> getAllUsers(@ValidateIntegerParam(name = "start") int start, @ValidateIntegerParam(name = "number") int number) {
-        return securityProvider.getAllUsers(start, number);
-    }
-
-    @Override
-    public int getAllUsersTotal() {
-        return securityProvider.getAllUsersTotal();
-    }
-
-    @Override
-    @ValidateParams
-    public List<Map<String, Object>> getUsersPerSite(@ValidateStringParam(name = "site") String site, @ValidateIntegerParam(name = "start") int start, @ValidateIntegerParam(name = "number") int number) throws SiteNotFoundException {
-        return securityProvider.getUsersPerSite(site, start, number);
-    }
-
-    @Override
-    @ValidateParams
-    public int getUsersPerSiteTotal(@ValidateStringParam(name = "site") String site) throws SiteNotFoundException {
-        return securityProvider.getUsersPerSiteTotal(site);
-    }
-
-    @Override
-    @ValidateParams
-    public boolean createGroup(@ValidateNoTagsParam(name = "groupName") String groupName, @ValidateNoTagsParam(name = "description") String description, @ValidateStringParam(name = "siteId") String siteId) throws GroupAlreadyExistsException, SiteNotFoundException {
-        return securityProvider.createGroup(groupName, description, siteId, false);
-    }
-
-    @Override
-    @ValidateParams
-    public Map<String, Object> getGroup(@ValidateStringParam(name = "site") String site, @ValidateStringParam(name = "group") String group) throws GroupNotFoundException {
-        return securityProvider.getGroup(site, group);
-    }
-
-    @Override
-    @ValidateParams
-    public List<Map<String, Object>> getAllGroups(@ValidateIntegerParam(name = "start") int start, @ValidateIntegerParam(name = "number") int number) {
-        return securityProvider.getAllGroups(start, number);
-    }
-
-    @Override
-    @ValidateParams
-    public List<Map<String, Object>> getGroupsPerSite(@ValidateStringParam(name = "site") String site, @ValidateIntegerParam(name = "start") int start, @ValidateIntegerParam(name = "number") int number) throws SiteNotFoundException {
-        return securityProvider.getGroupsPerSite(site, start, number);
-    }
-
-    @Override
-    @ValidateParams
-    public int getGroupsPerSiteTotal(@ValidateStringParam(name = "site") String site) throws SiteNotFoundException {
-        return securityProvider.getGroupsPerSiteTotal(site);
-    }
-
-    @Override
-    @ValidateParams
-    public List<Map<String, Object>> getUsersPerGroup(@ValidateStringParam(name = "site") String site, @ValidateStringParam(name = "group") String group, @ValidateIntegerParam(name = "start") int start, @ValidateIntegerParam(name = "number") int number) throws
-	    GroupNotFoundException {
-        return securityProvider.getUsersPerGroup(site, group, start, number);
-    }
-
-    @Override
-    @ValidateParams
-    public int getUsersPerGroupTotal(@ValidateStringParam(name = "site") String site, @ValidateStringParam(name = "group") String group) throws
-            GroupNotFoundException {
-        return securityProvider.getUsersPerGroupTotal(site, group);
-    }
-
-    @Override
-    @ValidateParams
-    public boolean updateGroup(@ValidateStringParam(name = "siteId") String siteId, @ValidateNoTagsParam(name = "groupName") String groupName, @ValidateNoTagsParam(name = "description") String description) throws GroupNotFoundException {
-        return securityProvider.updateGroup(siteId, groupName, description);
-    }
-
-    @Override
-    @ValidateParams
-    public boolean deleteGroup(@ValidateStringParam(name = "site") String site, @ValidateStringParam(name = "group") String group) throws GroupNotFoundException {
-        return securityProvider.deleteGroup(site, group);
-    }
-
-    @Override
-    @ValidateParams
-    public boolean addUserToGroup(@ValidateStringParam(name = "siteId") String siteId, @ValidateStringParam(name = "groupName") String groupName, @ValidateStringParam(name = "username") String username) throws
-	    UserAlreadyExistsException, UserNotFoundException, GroupNotFoundException {
-        boolean toRet = securityProvider.addUserToGroup(siteId, groupName, username);
-        if (toRet) {
-            ActivityService.ActivityType activityType = ActivityService.ActivityType.ADD_USER_TO_GROUP;
-            String user = getCurrentUser();
-            Map<String, String> extraInfo = new HashMap<String, String>();
-            extraInfo.put(DmConstants.KEY_CONTENT_TYPE, StudioConstants.CONTENT_TYPE_USER);
-            activityService.postActivity(siteId, user, username + " > " + groupName , activityType, ActivityService.ActivitySource.UI, extraInfo);
-        }
-        return toRet;
-    }
-
-    @Override
-    @ValidateParams
-    public boolean removeUserFromGroup(@ValidateStringParam(name = "siteId") String siteId, @ValidateStringParam(name = "groupName") String groupName, @ValidateStringParam(name = "username") String username) throws
-	    UserNotFoundException, GroupNotFoundException {
-        boolean toRet = securityProvider.removeUserFromGroup(siteId, groupName, username);
-        if (toRet) {
-            ActivityService.ActivityType activityType = ActivityService.ActivityType.REMOVE_USER_FROM_GROUP;
-            String user = getCurrentUser();
-            Map<String, String> extraInfo = new HashMap<String, String>();
-            extraInfo.put(DmConstants.KEY_CONTENT_TYPE, StudioConstants.CONTENT_TYPE_USER);
-            activityService.postActivity(siteId, user, username + " X " + groupName , activityType, ActivityService.ActivitySource.UI, extraInfo);
-        }
-        return toRet;
-    }
-
-    @Override
-    @ValidateParams
-    public Map<String, Object> forgotPassword(@ValidateStringParam(name = "username") String username) throws ServiceException, UserNotFoundException, UserExternallyManagedException {
-        logger.debug("Getting user profile for " + username);
-        Map<String, Object> userProfile = securityProvider.getUserProfile(username);
-        boolean success = false;
-        String message = StringUtils.EMPTY;
-        if (userProfile == null || userProfile.isEmpty()) {
-            logger.info("User profile not found for " + username);
-            throw new UserNotFoundException();
-        } else {
-            if (Boolean.parseBoolean(userProfile.get(KEY_EXTERNALLY_MANAGED).toString())) {
-                throw new UserExternallyManagedException();
-            } else {
-                if (userProfile.get(KEY_EMAIL) != null) {
-                    String email = userProfile.get(KEY_EMAIL).toString();
-
-                    logger.debug("Creating security token for forgot password");
-                    long timestamp = System.currentTimeMillis() + TimeUnit.MINUTES.toMillis(Long.parseLong(studioConfiguration
-                            .getProperty(SECURITY_FORGOT_PASSWORD_TOKEN_TIMEOUT)));
-                    String salt = studioConfiguration.getProperty(SECURITY_CIPHER_SALT);
-
-                    String token = username + "|" + timestamp + "|" + salt;
-                    String hashedToken = encryptToken(token);
-                    logger.debug("Sending forgot password email to " + email);
-                    try {
-                        sendForgotPasswordEmail(email, hashedToken);
-                    } catch (MessagingException | IOException | TemplateException e) {
-                        throw new ServiceException("Error while sending forgot password email", e);
-                    }
-                    success = true;
-                    message = "OK";
-                } else {
-                    logger.info("User " + username + " does not have assigned email with account");
-                    throw new ServiceException("User " + username + " does not have assigned email with account");
-                }
-            }
-        }
-        Map<String, Object> toRet = new HashMap<String, Object>();
-        toRet.put("success", success);
-        toRet.put("message", message);
-        return toRet;
-    }
-
-    @Override
-    @ValidateParams
-    public boolean validateToken(@ValidateStringParam(name = "token") String token) throws UserNotFoundException, UserExternallyManagedException {
+    public boolean validateToken(@ValidateStringParam(name = "token") String token) throws UserNotFoundException,
+        UserExternallyManagedException, ServiceLayerException {
         boolean toRet = false;
         String decryptedToken = decryptToken(token);
         if (StringUtils.isNotEmpty(decryptedToken)) {
             StringTokenizer tokenElements = new StringTokenizer(decryptedToken, "|");
             if (tokenElements.countTokens() == 3) {
                 String username = tokenElements.nextToken();
-                Map<String, Object> userProfile = securityProvider.getUserProfile(username);
-                if (userProfile == null || userProfile.isEmpty()) {
+                User userProfile = userServiceInternal.getUserByIdOrUsername(-1, username);
+                if (userProfile == null) {
                     logger.info("User profile not found for " + username);
                     throw new UserNotFoundException();
                 } else {
-                    if (Boolean.parseBoolean(userProfile.get(KEY_EXTERNALLY_MANAGED).toString())) {
+                    if (userProfile.isExternallyManaged()) {
                         throw new UserExternallyManagedException();
                     } else {
                         long tokenTimestamp = Long.parseLong(tokenElements.nextToken());
@@ -828,80 +734,36 @@ public class SecurityServiceImpl implements SecurityService {
         return toRet;
     }
 
-    private String encryptToken(String token) {
-        try {
-            SecretKeySpec key = new SecretKeySpec(studioConfiguration.getProperty(SECURITY_CIPHER_KEY).getBytes(), studioConfiguration.getProperty(SECURITY_CIPHER_TYPE));
-            Cipher cipher = Cipher.getInstance(studioConfiguration.getProperty(SECURITY_CIPHER_ALGORITHM));
-            byte[] tokenBytes = token.getBytes(StandardCharsets.UTF_8);
-            cipher.init(Cipher.ENCRYPT_MODE, key, new IvParameterSpec(key.getEncoded()));
-            byte[] encrypted = cipher.doFinal(tokenBytes);
-            return Base64.getEncoder().encodeToString(encrypted);
-        } catch (NoSuchAlgorithmException | InvalidKeyException | NoSuchPaddingException | BadPaddingException | IllegalBlockSizeException | InvalidAlgorithmParameterException e) {
-            logger.error("Error while encrypting forgot password token", e);
-            return null;
-        }
-    }
-
     private String decryptToken(String token) {
         try {
-            SecretKeySpec key = new SecretKeySpec(studioConfiguration.getProperty(SECURITY_CIPHER_KEY).getBytes(), studioConfiguration.getProperty(SECURITY_CIPHER_TYPE));
+            SecretKeySpec key = new SecretKeySpec(studioConfiguration.getProperty(SECURITY_CIPHER_KEY).getBytes(),
+                    studioConfiguration.getProperty(SECURITY_CIPHER_TYPE));
             Cipher cipher = Cipher.getInstance(studioConfiguration.getProperty(SECURITY_CIPHER_ALGORITHM));
             byte[] tokenBytes = Base64.getDecoder().decode(token.getBytes(StandardCharsets.UTF_8));
             cipher.init(Cipher.DECRYPT_MODE, key, new IvParameterSpec(key.getEncoded()));
             byte[] decrypted = cipher.doFinal(tokenBytes);
             return new String(decrypted, StandardCharsets.UTF_8);
-        } catch (IllegalArgumentException | NoSuchPaddingException | NoSuchAlgorithmException | InvalidKeyException | BadPaddingException | IllegalBlockSizeException | InvalidAlgorithmParameterException e) {
+        } catch (IllegalArgumentException | NoSuchPaddingException | NoSuchAlgorithmException | InvalidKeyException |
+                BadPaddingException | IllegalBlockSizeException | InvalidAlgorithmParameterException e) {
             logger.error("Error while decrypting forgot password token", e);
             return null;
         }
     }
 
-    private void sendForgotPasswordEmail(String emailAddress, String token) throws MessagingException, IOException, TemplateException {
-        try {
-            Template emailTemplate = freeMarkerConfig.getObject().getConfiguration().getTemplate(studioConfiguration.getProperty(SECURITY_FORGOT_PASSWORD_EMAIL_TEMPLATE));
-
-            Writer out = new StringWriter();
-            Map<String, Object> model = new HashMap<String, Object>();
-            RequestContext context = RequestContext.getCurrent();
-            HttpServletRequest request = context.getRequest();
-            String authoringUrl = request.getRequestURL().toString().replace(request.getPathInfo(), "");
-            String serviceUrl = studioConfiguration.getProperty(SECURITY_RESET_PASSWORD_SERVICE_URL);
-            model.put("authoringUrl", authoringUrl);
-            model.put("serviceUrl", serviceUrl);
-            model.put("token", token);
-            if (emailTemplate != null) {
-                emailTemplate.process(model, out);
-            }
-
-            MimeMessage mimeMessage = emailService.createMimeMessage();
-            MimeMessageHelper messageHelper = new MimeMessageHelper(mimeMessage);
-
-            messageHelper.setFrom(getDefaultFromAddress());
-            messageHelper.setTo(emailAddress);
-            messageHelper.setSubject(studioConfiguration.getProperty(SECURITY_FORGOT_PASSWORD_MESSAGE_SUBJECT));
-            messageHelper.setText(out.toString(), true);
-            logger.info("Sending password recovery message to " + emailAddress);
-            if (isAuthenticatedSMTP()) {
-                emailService.send(mimeMessage);
-            } else {
-                emailServiceNoAuth.send(mimeMessage);
-            }
-            logger.info("Password recovery message successfully sent to " + emailAddress);
-        } catch (MessagingException | IOException | TemplateException e) {
-            logger.error("Failed to send password recovery message to " + emailAddress, e);
-            throw e;
-        }
+    @Override
+    @ValidateParams
+    public boolean changePassword(@ValidateStringParam(name = "username") String username,
+                                  @ValidateStringParam(name = "current") String current,
+                                  @ValidateStringParam(name = "newPassword") String newPassword)
+        throws PasswordDoesNotMatchException, UserExternallyManagedException, ServiceLayerException {
+        return userServiceInternal.changePassword(username, current, newPassword);
     }
 
     @Override
     @ValidateParams
-    public boolean changePassword(@ValidateStringParam(name = "username") String username, @ValidateStringParam(name = "current") String current, @ValidateStringParam(name = "newPassword") String newPassword) throws UserNotFoundException, PasswordDoesNotMatchException, UserExternallyManagedException {
-        return securityProvider.changePassword(username, current, newPassword);
-    }
-
-    @Override
-    @ValidateParams
-    public Map<String, Object> setUserPassword(@ValidateStringParam(name = "token") String token, @ValidateStringParam(name = "newPassword") String newPassword) throws UserNotFoundException, UserExternallyManagedException {
+    public Map<String, Object> setUserPassword(@ValidateStringParam(name = "token") String token,
+                                               @ValidateStringParam(name = "newPassword") String newPassword)
+        throws UserNotFoundException, UserExternallyManagedException, ServiceLayerException {
         Map<String, Object> toRet = new HashMap<String, Object>();
         toRet.put("username", StringUtils.EMPTY);
         toRet.put("success", false);
@@ -909,11 +771,10 @@ public class SecurityServiceImpl implements SecurityService {
             String username = getUsernameFromToken(token);
             if (StringUtils.isNotEmpty(username)) {
                 toRet.put("username", username);
-                Map<String, Object> userStatus = securityProvider.getUserStatus(username);
-                if (userStatus != null && !userStatus.isEmpty()) {
-                    boolean enabled = (Boolean)userStatus.get("enabled");
-                    if (enabled) {
-                        toRet.put("success", securityProvider.setUserPassword(username, newPassword));
+                User user = userServiceInternal.getUserByIdOrUsername(-1, username);
+                if (user != null ) {
+                    if (user.isEnabled()) {
+                        toRet.put("success", userServiceInternal.setUserPassword(username, newPassword));
                     }
                 } else {
                     throw new UserNotFoundException("User not found");
@@ -939,21 +800,23 @@ public class SecurityServiceImpl implements SecurityService {
 
     @Override
     @ValidateParams
-    public boolean resetPassword(@ValidateStringParam(name = "username") String username, @ValidateStringParam(name = "newPassword") String newPassword) throws UserNotFoundException, UserExternallyManagedException {
+    public boolean resetPassword(@ValidateStringParam(name = "username") String username,
+                                 @ValidateStringParam(name = "newPassword") String newPassword)
+        throws UserNotFoundException, UserExternallyManagedException, ServiceLayerException {
         String currentUser = getCurrentUser();
         if (isAdmin(currentUser)) {
-            return securityProvider.setUserPassword(username, newPassword);
+            return userServiceInternal.setUserPassword(username, newPassword);
         } else {
             return false;
         }
     }
 
-    private boolean isAdmin(String username) {
-        Set<String> userGroups = securityProvider.getUserGroups(username);
+    private boolean isAdmin(String username) throws ServiceLayerException, UserNotFoundException {
+        List<Group> userGroups = userServiceInternal.getUserGroups(-1, username);
         boolean toRet = false;
         if (CollectionUtils.isNotEmpty(userGroups)) {
-            for (String group : userGroups) {
-                if (StringUtils.equalsIgnoreCase(group, studioConfiguration.getProperty(SECURITY_GLOBAL_ADMIN_GROUP))) {
+            for (Group group : userGroups) {
+                if (StringUtils.equalsIgnoreCase(group.getGroupName(), SYSTEM_ADMIN_GROUP)) {
                     toRet = true;
                     break;
                 }
@@ -964,45 +827,91 @@ public class SecurityServiceImpl implements SecurityService {
 
     @Override
     @ValidateParams
-    public boolean isSiteAdmin(@ValidateStringParam(name = "username") String username) {
-        Set<String> userGroups = securityProvider.getUserGroups(username);
+    public boolean isSiteAdmin(@ValidateStringParam(name = "username") String username, String site) {
+
         boolean toRet = false;
-        if (CollectionUtils.isNotEmpty(userGroups)) {
-            for (String group : userGroups) {
-                if (StringUtils.equalsIgnoreCase(group, studioConfiguration.getProperty(CONFIGURATION_SITE_DEFAULT_ADMIN_GROUP))) {
-                    toRet = true;
-                    break;
+        try {
+            if (userServiceInternal.isUserMemberOfGroup(username, SYSTEM_ADMIN_GROUP)) {
+                return true;
+            }
+
+            List<Group> groups = userServiceInternal.getUserGroups(-1, username);
+
+            if (CollectionUtils.isNotEmpty(groups)) {
+                Map<String, List<String>> roleMappings = configurationService.geRoleMappings(site);
+
+                if (MapUtils.isNotEmpty(roleMappings)) {
+                    for (Group group : groups) {
+                        String groupName = group.getGroupName();
+                        List<String> roles = roleMappings.get(groupName);
+                        if (roles.contains(ADMIN_ROLE)) {
+                            toRet = true;
+                        }
+                    }
                 }
             }
+
+        } catch (ServiceLayerException | UserNotFoundException e) {
+            logger.warn("Error getting user memberships", e);
         }
         return toRet;
     }
 
     @Override
     @ValidateParams
-    public boolean userExists(@ValidateStringParam(name = "username") String username) {
-        return securityProvider.userExists(username);
+    public boolean userExists(@ValidateStringParam(name = "username") String username) throws ServiceLayerException {
+        return userServiceInternal.userExists(-1, username);
     }
 
     @Override
-    public boolean validateSession(HttpServletRequest request) {
+    public boolean validateSession(HttpServletRequest request) throws ServiceLayerException {
         HttpSession httpSession = request.getSession();
-        String authToken = (String)httpSession.getAttribute(STUDIO_SESSION_TOKEN_ATRIBUTE);
-        String userName = securityProvider.getCurrentUser();
+        String authToken = getCurrentToken();
+        String userName = getCurrentUser();
 
         if (userName != null) {
 
             UserDetails userDetails = this.userDetailsManager.loadUserByUsername(userName);
 
-            return (SessionTokenUtils.validateToken(authToken, userDetails.getUsername()));
+            if (SessionTokenUtils.validateToken(authToken, userDetails.getUsername())) {
+                return true;
+            }
 
         }
 
+        httpSession.removeAttribute(HTTP_SESSION_ATTRIBUTE_AUTHENTICATION);
+        httpSession.invalidate();
         return false;
     }
 
-    public String getConfigPath() {
-        return studioConfiguration.getProperty(CONFIGURATION_SITE_CONFIG_BASE_PATH);
+    @Override
+    public Authentication getAuthentication() {
+        Authentication auth = null;
+        RequestContext context = RequestContext.getCurrent();
+
+        if (context != null) {
+            HttpSession httpSession = context.getRequest().getSession();
+            auth = (Authentication) httpSession.getAttribute(HTTP_SESSION_ATTRIBUTE_AUTHENTICATION);
+        }
+
+        return auth;
+    }
+
+
+    protected String getJobOrEventTicket() {
+        String ticket = null;
+        CronJobContext cronJobContext = CronJobContext.getCurrent();
+
+        if (cronJobContext != null) {
+            ticket = cronJobContext.getAuthenticationToken();
+        } else {
+            RepositoryEventContext repositoryEventContext = RepositoryEventContext.getCurrent();
+            if (repositoryEventContext != null) {
+                ticket = repositoryEventContext.getAuthenticationToken();
+            }
+        }
+
+        return ticket;
     }
 
     public String getRoleMappingsFileName() {
@@ -1043,33 +952,115 @@ public class SecurityServiceImpl implements SecurityService {
         return studioConfiguration.getProperty(CONFIGURATION_GLOBAL_SYSTEM_SITE);
     }
 
-    public SecurityProvider getSecurityProvider() { return securityProvider; }
-    public void setSecurityProvider(SecurityProvider securityProvider) { this.securityProvider = securityProvider; }
+    public ContentTypeService getContentTypeService() {
+        return contentTypeService;
+    }
 
-    public ContentTypeService getContentTypeService() { return contentTypeService; }
-    public void setContentTypeService(ContentTypeService contentTypeService) { this.contentTypeService = contentTypeService; }
+    public void setContentTypeService(ContentTypeService contentTypeService) {
+        this.contentTypeService = contentTypeService;
+    }
 
-    public ContentService getContentService() { return contentService; }
-    public void setContentService(ContentService contentService) { this.contentService = contentService; }
+    public ContentService getContentService() {
+        return contentService;
+    }
 
-    public GeneralLockService getGeneralLockService() { return generalLockService; }
-    public void setGeneralLockService(GeneralLockService generalLockService) { this.generalLockService = generalLockService; }
+    public void setContentService(ContentService contentService) {
+        this.contentService = contentService;
+    }
 
-    public StudioConfiguration getStudioConfiguration() { return studioConfiguration; }
-    public void setStudioConfiguration(StudioConfiguration studioConfiguration) { this.studioConfiguration = studioConfiguration; }
+    public GeneralLockService getGeneralLockService() {
+        return generalLockService;
+    }
 
-    public JavaMailSender getEmailService() { return emailService; }
-    public void setEmailService(JavaMailSender emailService) { this.emailService = emailService; }
+    public void setGeneralLockService(GeneralLockService generalLockService) {
+        this.generalLockService = generalLockService;
+    }
 
-    public JavaMailSender getEmailServiceNoAuth() { return emailServiceNoAuth; }
-    public void setEmailServiceNoAuth(JavaMailSender emailServiceNoAuth) { this.emailServiceNoAuth = emailServiceNoAuth; }
+    public StudioConfiguration getStudioConfiguration() {
+        return studioConfiguration;
+    }
 
-    public UserDetailsManager getUserDetailsManager() { return userDetailsManager; }
-    public void setUserDetailsManager(UserDetailsManager userDetailsManager) { this.userDetailsManager = userDetailsManager; }
+    public void setStudioConfiguration(StudioConfiguration studioConfiguration) {
+        this.studioConfiguration = studioConfiguration;
+    }
 
-    public ObjectFactory<FreeMarkerConfig> getFreeMarkerConfig() { return freeMarkerConfig; }
-    public void setFreeMarkerConfig(ObjectFactory<FreeMarkerConfig> freeMarkerConfig) { this.freeMarkerConfig = freeMarkerConfig; }
+    public JavaMailSender getEmailService() {
+        return emailService;
+    }
 
-    public ActivityService getActivityService() { return activityService; }
-    public void setActivityService(ActivityService activityService) { this.activityService = activityService; }
+    public void setEmailService(JavaMailSender emailService) {
+        this.emailService = emailService;
+    }
+
+    public JavaMailSender getEmailServiceNoAuth() {
+        return emailServiceNoAuth;
+    }
+
+    public void setEmailServiceNoAuth(JavaMailSender emailServiceNoAuth) {
+        this.emailServiceNoAuth = emailServiceNoAuth;
+    }
+
+    public UserDetailsManager getUserDetailsManager() {
+        return userDetailsManager;
+    }
+
+    public void setUserDetailsManager(UserDetailsManager userDetailsManager) {
+        this.userDetailsManager = userDetailsManager;
+    }
+
+    public ObjectFactory<FreeMarkerConfig> getFreeMarkerConfig() {
+        return freeMarkerConfig;
+    }
+
+    public void setFreeMarkerConfig(ObjectFactory<FreeMarkerConfig> freeMarkerConfig) {
+        this.freeMarkerConfig = freeMarkerConfig;
+    }
+
+    public GroupService getGroupService() {
+        return groupService;
+    }
+
+    public void setGroupService(GroupService groupService) {
+        this.groupService = groupService;
+    }
+
+    public UserServiceInternal getUserServiceInternal() {
+        return userServiceInternal;
+    }
+
+    public void setUserServiceInternal(UserServiceInternal userServiceInternal) {
+        this.userServiceInternal = userServiceInternal;
+    }
+
+    public AuthenticationChain getAuthenticationChain() {
+        return authenticationChain;
+    }
+
+    public void setAuthenticationChain(AuthenticationChain authenticationChain) {
+        this.authenticationChain = authenticationChain;
+    }
+
+    public ConfigurationService getConfigurationService() {
+        return configurationService;
+    }
+
+    public void setConfigurationService(ConfigurationService configurationService) {
+        this.configurationService = configurationService;
+    }
+
+    public AuditServiceInternal getAuditServiceInternal() {
+        return auditServiceInternal;
+    }
+
+    public void setAuditServiceInternal(AuditServiceInternal auditServiceInternal) {
+        this.auditServiceInternal = auditServiceInternal;
+    }
+
+    public SiteService getSiteService() {
+        return siteService;
+    }
+
+    public void setSiteService(SiteService siteService) {
+        this.siteService = siteService;
+    }
 }

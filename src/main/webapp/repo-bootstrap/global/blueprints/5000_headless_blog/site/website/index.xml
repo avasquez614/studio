@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  ~ Copyright (C) 2007-2019 Crafter Software Corporation. All Rights Reserved.
+  ~
+  ~ This program is free software: you can redistribute it and/or modify
+  ~ it under the terms of the GNU General Public License as published by
+  ~ the Free Software Foundation, either version 3 of the License, or
+  ~ (at your option) any later version.
+  ~
+  ~ This program is distributed in the hope that it will be useful,
+  ~ but WITHOUT ANY WARRANTY; without even the implied warranty of
+  ~ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+  ~ GNU General Public License for more details.
+  ~
+  ~ You should have received a copy of the GNU General Public License
+  ~ along with this program.  If not, see <http://www.gnu.org/licenses/>.
+  -->
+
+<page>
+	<content-type>/page/item-explorer</content-type>	<placeInNav>true</placeInNav>
+	<display-template>/templates/web/item-explorer.ftl</display-template>
+	<descriptor-mapper>hierarchical-mapper</descriptor-mapper>
+	<placeInNav>false</placeInNav>
+	<file-name>index.xml</file-name>
+	<internal-name>Item Explorer</internal-name>
+	<orderDefault_f>-1</orderDefault_f>
+	<body_html>&lt;p&gt;This sample site allows you to manage a blog using multiple authors, categories and tags for the posts.&lt;/p&gt;
+&lt;p&gt;All content is exposed by a flexible REST API:&lt;/p&gt;
+&lt;p&gt;get endpoint using an id:&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;/api/1/author/{id}.json&lt;/li&gt;
+&lt;li&gt;/api/1/post/{id}.json&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;list endpoints support &amp;#39;start&amp;#39; and &amp;#39;rows&amp;#39; parameters for pagination:&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;/api/1/author/list.json&lt;/li&gt;
+&lt;li&gt;/api/1/category/list.json&lt;/li&gt;
+&lt;li&gt;/api/1/tag/list.json&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;list posts endpoint also supports &amp;#39;author&amp;#39;, &amp;#39;categories&amp;#39;, &amp;#39;tags&amp;#39; parameters. A special &amp;#39;q&amp;#39; parameter supports text search in the body of the posts:&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;/api/1/post/list.json&lt;/li&gt;
+&lt;/ul&gt;</body_html>
+	<objectGroupId>8d7f</objectGroupId>
+	<objectId>8d7f21fa-5e09-00aa-8340-853b7db302da</objectId>
+	<folder-name/>
+	<createdDate>2017-1-31T16:18:14.000Z</createdDate>
+	<createdDate_dt>2017-1-31T16:18:14.000Z</createdDate_dt>
+	<lastModifiedDate>2017-5-17T15:51:28.000Z</lastModifiedDate>
+	<lastModifiedDate_dt>2017-5-17T15:51:28.000Z</lastModifiedDate_dt>
+	<title_s>Item Explorer</title_s>
+</page>

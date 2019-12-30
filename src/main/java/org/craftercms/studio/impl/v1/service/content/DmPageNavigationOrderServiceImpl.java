@@ -1,6 +1,5 @@
 /*
- * Crafter Studio Web-content authoring solution
- * Copyright (C) 2007-2016 Crafter Software Corporation.
+ * Copyright (C) 2007-2019 Crafter Software Corporation. All Rights Reserved.
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -32,28 +31,25 @@ import org.craftercms.studio.api.v1.service.GeneralLockService;
 import org.craftercms.studio.api.v1.service.content.ContentService;
 import org.craftercms.studio.api.v1.service.content.DmPageNavigationOrderService;
 import org.craftercms.studio.api.v1.to.ContentItemTO;
-import org.craftercms.studio.api.v1.util.StudioConfiguration;
+import org.craftercms.studio.api.v2.utils.StudioConfiguration;
 import org.dom4j.Document;
 import org.dom4j.Element;
 import org.dom4j.Node;
-import org.springframework.beans.factory.annotation.Autowired;
 
 import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
 
-import static org.craftercms.studio.api.v1.util.StudioConfiguration.PAGE_NAVIGATION_ORDER_INCREMENT;
+import static org.craftercms.studio.api.v2.utils.StudioConfiguration.PAGE_NAVIGATION_ORDER_INCREMENT;
 
-
-public class DmPageNavigationOrderServiceImpl extends AbstractRegistrableService implements DmPageNavigationOrderService {
+public class DmPageNavigationOrderServiceImpl extends AbstractRegistrableService
+        implements DmPageNavigationOrderService {
 
     private static final Logger logger = LoggerFactory.getLogger(DmPageNavigationOrderServiceImpl.class);
 
     protected GeneralLockService generalLockService;
     protected ContentService contentService;
     protected StudioConfiguration studioConfiguration;
-
-    @Autowired
     protected NavigationOrderSequenceMapper navigationOrderSequenceMapper;
 
     @Override
@@ -63,22 +59,25 @@ public class DmPageNavigationOrderServiceImpl extends AbstractRegistrableService
 
     @Override
     @ValidateParams
-    public double getNewNavOrder(@ValidateStringParam(name = "site") String site, @ValidateSecurePathParam(name = "path") String path) {
+    public double getNewNavOrder(@ValidateStringParam(name = "site") String site,
+                                 @ValidateSecurePathParam(name = "path") String path) {
         return getNewNavOrder(site, path, -1);
     }
 
     @Override
     @ValidateParams
-    public double getNewNavOrder(@ValidateStringParam(name = "site") String site, @ValidateSecurePathParam(name = "path") String path, @ValidateDoubleParam(name = "currentMaxNavOrder") double currentMaxNavOrder) {
+    public double getNewNavOrder(@ValidateStringParam(name = "site") String site,
+                                 @ValidateSecurePathParam(name = "path") String path,
+                                 @ValidateDoubleParam(name = "currentMaxNavOrder") double currentMaxNavOrder) {
 
         String lockId = site + ":" + path;
-        generalLockService.lock(lockId);
         double lastNavOrder = 1000D;
         try {
             Map<String, String> params = new HashMap<String, String>();
             params.put("site", site);
             params.put("path", path);
-            NavigationOrderSequence navigationOrderSequence = navigationOrderSequenceMapper.getPageNavigationOrderForSiteAndPath(params);
+            NavigationOrderSequence navigationOrderSequence =
+                    navigationOrderSequenceMapper.getPageNavigationOrderForSiteAndPath(params);
             if (navigationOrderSequence == null) {
                 navigationOrderSequence = new NavigationOrderSequence();
                 navigationOrderSequence.setSite(site);
@@ -109,8 +108,6 @@ public class DmPageNavigationOrderServiceImpl extends AbstractRegistrableService
             lastNavOrder = navigationOrderSequence.getMaxCount();
         } catch (Exception e) {
             logger.error("Unexpected error: ", e);
-        } finally {
-            generalLockService.unlock(lockId);
         }
         return lastNavOrder;
 
@@ -118,10 +115,10 @@ public class DmPageNavigationOrderServiceImpl extends AbstractRegistrableService
 
     @Override
     @ValidateParams
-    public boolean addNavOrder(@ValidateStringParam(name = "site") String site, @ValidateSecurePathParam(name = "path") String path, Document document) {
+    public boolean addNavOrder(@ValidateStringParam(name = "site") String site,
+                               @ValidateSecurePathParam(name = "path") String path, Document document) {
         boolean docUpdated =false;
         Element root = document.getRootElement();
-        //Node navOrderNode = root.selectSingleNode("//" + DmXmlConstants.ELM_ORDER_VALUE);
         Node navOrderNode = root.selectSingleNode("//" + DmXmlConstants.ELM_ORDER_DEFAULT);
 
         //skip if order value element does not exist
@@ -135,10 +132,10 @@ public class DmPageNavigationOrderServiceImpl extends AbstractRegistrableService
 
     @Override
     @ValidateParams
-    public boolean updateNavOrder(@ValidateStringParam(name = "site") String site, @ValidateSecurePathParam(name = "path") String path, Document document) {
+    public boolean updateNavOrder(@ValidateStringParam(name = "site") String site,
+                                  @ValidateSecurePathParam(name = "path") String path, Document document) {
         boolean docUpdated =false;
         Element root = document.getRootElement();
-        //Node navOrderNode = root.selectSingleNode("//" + DmXmlConstants.ELM_ORDER_VALUE);
         Node navOrderNode = root.selectSingleNode("//" + DmXmlConstants.ELM_ORDER_DEFAULT);
 
         //skip if order value element does not exist
@@ -171,12 +168,35 @@ public class DmPageNavigationOrderServiceImpl extends AbstractRegistrableService
         return toReturn;
     }
 
-    public GeneralLockService getGeneralLockService() { return generalLockService; }
-    public void setGeneralLockService(GeneralLockService generalLockService) { this.generalLockService = generalLockService; }
+    public GeneralLockService getGeneralLockService() {
+        return generalLockService;
+    }
 
-    public ContentService getContentService() { return contentService; }
-    public void setContentService(ContentService contentService) { this.contentService = contentService; }
+    public void setGeneralLockService(GeneralLockService generalLockService) {
+        this.generalLockService = generalLockService;
+    }
 
-    public StudioConfiguration getStudioConfiguration() { return studioConfiguration; }
-    public void setStudioConfiguration(StudioConfiguration studioConfiguration) { this.studioConfiguration = studioConfiguration; }
+    public ContentService getContentService() {
+        return contentService;
+    }
+
+    public void setContentService(ContentService contentService) {
+        this.contentService = contentService;
+    }
+
+    public StudioConfiguration getStudioConfiguration() {
+        return studioConfiguration;
+    }
+
+    public void setStudioConfiguration(StudioConfiguration studioConfiguration) {
+        this.studioConfiguration = studioConfiguration;
+    }
+
+    public NavigationOrderSequenceMapper getNavigationOrderSequenceMapper() {
+        return navigationOrderSequenceMapper;
+    }
+
+    public void setNavigationOrderSequenceMapper(NavigationOrderSequenceMapper navigationOrderSequenceMapper) {
+        this.navigationOrderSequenceMapper = navigationOrderSequenceMapper;
+    }
 }

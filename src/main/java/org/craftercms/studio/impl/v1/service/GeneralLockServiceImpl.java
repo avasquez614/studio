@@ -1,6 +1,5 @@
 /*
- * Crafter Studio Web-content authoring solution
- * Copyright (C) 2007-2016 Crafter Software Corporation.
+ * Copyright (C) 2007-2019 Crafter Software Corporation. All Rights Reserved.
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -125,5 +124,6 @@ public class GeneralLockServiceImpl extends AbstractRegistrableService implement
         if (logger.isDebugEnabled()) {
             logger.debug("[" + Thread.currentThread().getName() + "]" + " Finished unlocking id " + objectId);
         }
+
     }
 }

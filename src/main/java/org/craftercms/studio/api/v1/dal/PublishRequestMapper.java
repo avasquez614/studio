@@ -1,6 +1,5 @@
 /*
- * Crafter Studio Web-content authoring solution
- * Copyright (C) 2007-2016 Crafter Software Corporation.
+ * Copyright (C) 2007-2019 Crafter Software Corporation. All Rights Reserved.
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -32,27 +31,26 @@ public interface PublishRequestMapper {
 
     void cancelWorkflow(Map params);
 
+    void cancelWorkflowBulk(Map params);
+
     List<PublishRequest> getItemsReadyForDeployment(Map params);
 
     void updateItemDeploymentState(PublishRequest item);
 
     void deleteDeploymentDataForSite(Map params);
 
-    List<PublishRequest> getItemsBySiteAndStates(Map params);
-
-    void cancelDeployment(Map params);
-
-    int checkIfItemWasPublished(Map params);
-
-    int checkIfItemWasPublishedForEnvironment(Map params);
-
     PublishRequest checkPublishingStatus(Map params);
 
     int isPublishingBlocked(Map params);
 
-    PublishRequest getLastDeployedItem(Map params);
-
-    List<String> getQueuedPaths(Map params);
+    int isPublishingQueueEmpty(Map params);
 
     int checkItemQueued(Map params);
+
+    /**
+     * Reset publishing requests in processing state
+     *
+     * @param params SQL query parameters
+     */
+    void resetProcessingQueue(Map params);
 }

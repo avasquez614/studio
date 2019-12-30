@@ -1,3 +1,20 @@
+/*
+ * Copyright (C) 2007-2019 Crafter Software Corporation. All Rights Reserved.
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ */
+
 package scripts.api
 
 import scripts.libs.Cookies
@@ -12,7 +29,6 @@ import scripts.api.impl.security.SpringSecurityServices
 import scripts.api.impl.site.SpringSiteServices
 import scripts.api.impl.dependency.SpringDependencyServices
 import scripts.api.impl.objectstate.SpringObjectStateServices
-import scripts.api.impl.monitor.SpringMonitorServices
 import scripts.api.impl.cmis.SpringCmisServices
 
 /**
@@ -71,15 +87,15 @@ class ServiceFactory {
 		return new SpringDeploymentServices(context)
 	}
 
-	/**
-	 * return the implementation for activity services
-	 *
-	 * @param context site context
-	 * @return ActivityServices
-	 */
-	static getActivityServices(context) {
-		return new SpringActivityServices(context)
-	}
+    /**
+     * return the implementation for activity services
+     *
+     * @param context site context
+     * @return ActivityServices
+     */
+    static getActivityServices(context) {
+        return new SpringActivityServices(context)
+    }
 
 	/**
 	 * return the implementation for workflow services
@@ -141,16 +157,6 @@ class ServiceFactory {
 	static getPageNavigationOrderServices(context) {
 		return new SpringPageNavigationOrderServices(context)
 	}
-
-    /**
-     * return the implementation for mointor services
-     *
-     * @param context site context
-     * @return Monitor Services
-     */
-    static getMonitorServices(context) {
-        return new SpringMonitorServices(context)
-    }
 
     /**
      * return the implementation for cmis services

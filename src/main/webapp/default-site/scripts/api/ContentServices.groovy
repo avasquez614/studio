@@ -1,3 +1,20 @@
+/*
+ * Copyright (C) 2007-2019 Crafter Software Corporation. All Rights Reserved.
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ */
+
 package scripts.api
 
 import scripts.api.ServiceFactory
@@ -41,32 +58,6 @@ class ContentServices {
     }
 
     /**
-     * copy content from PathA to pathB
-     *
-     * @param site - the project ID
-     * @param fromPath paths to content
-     * @param toPath target path
-     * @oaran context - container for passing request, token and other values that may be needed by the implementation
-     */
-    static copyContent(site, fromPath, toPath, context){
-        def contentServicesImpl = ServiceFactory.getContentServices(context)
-        return contentServicesImpl.copyContent(site, fromPath, toPath)
-    }
-
-    /**
-     * move content from PathA to pathB
-     *
-     * @param site - the project ID
-     * @param fromPath paths to content
-     * @param toPath target path
-     * @oaran context - container for passing request, token and other values that may be needed by the implementation
-     */
-    static moveContent(site, fromPath, toPath, context){
-        def contentServicesImpl = ServiceFactory.getContentServices(context)
-        return contentServicesImpl.moveContent(site, fromPath, toPath)
-    }
-
-    /**
 	 * Write asset
 	 * @param site - the project ID
 	 * @param path - the path to wrtie the content
@@ -75,17 +66,6 @@ class ContentServices {
 	 */
 	static writeAsset(site, path, content, context){
 		throw new Exception("NOT USED")
-	}
-
-	/**
-	 * delete a content item
-	 * @param site - the projectId
-	 * @param path - the path to delete
-	 * @oaran context - container for passing request, token and other values that may be needed by the implementation
-	 */
-	static deleteContent(site, path, context) {
-        def contentServicesImpl = ServiceFactory.getContentServices(context)
-        return contentServicesImpl.deleteContent(site, path)
 	}
 
 	/**
@@ -311,5 +291,31 @@ class ContentServices {
     static renameFolder(site, path, name, context){
         def contentServicesImpl = ServiceFactory.getContentServices(context)
         return contentServicesImpl.renameFolder(site, path, name)
+    }
+
+    /**
+     * Push content to remote
+     * @param context container for passing request, token and other values that may be needed by the implementation
+     * @param siteId site identifier
+     * @param remoteName remote name
+     * @param remoteBranch remote branch to push to
+     * @return
+     */
+    static pushToRemote(context, siteId, remoteName, remoteBranch) {
+        def contentServiceImpl = ServiceFactory.getContentServices(context)
+        return contentServiceImpl.pushToRemote(siteId, remoteName, remoteBranch)
+    }
+
+    /**
+     * Pull content from remote
+     * @param context container for passing request, token and other values that may be needed by the implementation
+     * @param siteId site identifier
+     * @param remoteName remote name
+     * @param remoteBranch remote branch to pull from
+     * @return
+     */
+    static pullFromRemote(context, siteId, remoteName, remoteBranch) {
+        def contentServiceImpl = ServiceFactory.getContentServices(context)
+        return contentServiceImpl.pullFromRemote(siteId, remoteName, remoteBranch)
     }
 }	

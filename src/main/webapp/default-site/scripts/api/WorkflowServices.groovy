@@ -1,4 +1,21 @@
 
+/*
+ * Copyright (C) 2007-2019 Crafter Software Corporation. All Rights Reserved.
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ */
+
 package scripts.api
 
 import scripts.api.ServiceFactory
@@ -67,15 +84,6 @@ class WorkflowServices {
     }
 
     /**
-     * get workflow jobs
-     * @param site - the project ID
-     */
-    static getWorkflowJobs(context, site) {
-        def workflowServicesImpl = ServiceFactory.getWorkflowServices(context)
-        return workflowServicesImpl.getWorkflowJobs(site)
-    }
-
-    /**
      * get a user's activity history
      * @param site - the project ID
      * @param userId - id of the user
@@ -111,11 +119,6 @@ class WorkflowServices {
     static submitToGoLive(context, site, user, requestBody) {
         def workflowServicesImpl = ServiceFactory.getWorkflowServices(context);
         return workflowServicesImpl.submitToGoLive(site, user, requestBody);
-    }
-
-    static submitToDelete(context, user, site, requestBody) {
-        def workflowServicesImpl = ServiceFactory.getWorkflowServices(context);
-        return workflowServicesImpl.submitToDelete(site, user, requestBody);
     }
 
     static reject(context, site, user, requestBody) {

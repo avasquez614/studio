@@ -1,7 +1,5 @@
 /*
- * Crafter Studio
- *
- * Copyright (C) 2007-2016 Crafter Software Corporation.
+ * Copyright (C) 2007-2019 Crafter Software Corporation. All Rights Reserved.
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -15,7 +13,6 @@
  *
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
- *
  */
 
 package org.craftercms.studio.impl.v1.repository.git;
@@ -25,9 +22,9 @@ package org.craftercms.studio.impl.v1.repository.git;
  */
 public interface GitContentRepositoryConstants {
     String GIT_ROOT = ".git";
-    String INITIAL_COMMIT = "Initial commit.";
     String GIT_COMMIT_ALL_ITEMS = ".";
     String EMPTY_FILE = ".keep";
+    String IGNORE_FILE = ".gitignore";
     String[] IGNORE_FILES = new String[] { ".keep", ".DS_Store" };
 
     /** Configuration */
@@ -42,4 +39,6 @@ public interface GitContentRepositoryConstants {
     String CONFIG_PARAMETER_URL = "url";
     String CONFIG_PARAMETER_FETCH = "fetch";
     String CONFIG_PARAMETER_FETCH_DEFAULT = "+refs/heads/*:refs/remotes/origin/*";
+
+    String PREVIOUS_COMMIT_SUFFIX = "~1";
 }

@@ -1,6 +1,5 @@
 /*
- * Crafter Studio Web-content authoring solution
- * Copyright (C) 2007-2017 Crafter Software Corporation.
+ * Copyright (C) 2007-2019 Crafter Software Corporation. All Rights Reserved.
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -21,28 +20,36 @@ package org.craftercms.studio.impl.v1.web.security.access;
 import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.craftercms.studio.api.v1.dal.SiteFeed;
-import org.craftercms.studio.api.v1.dal.User;
-import org.craftercms.studio.api.v1.exception.SiteNotFoundException;
+import org.craftercms.studio.api.v1.exception.ServiceLayerException;
 import org.craftercms.studio.api.v1.exception.security.UserNotFoundException;
 import org.craftercms.studio.api.v1.log.Logger;
 import org.craftercms.studio.api.v1.log.LoggerFactory;
-import org.craftercms.studio.api.v1.service.security.SecurityProvider;
 import org.craftercms.studio.api.v1.service.security.SecurityService;
 import org.craftercms.studio.api.v1.service.site.SiteService;
-import org.craftercms.studio.api.v1.util.StudioConfiguration;
+import org.craftercms.studio.api.v2.dal.Group;
+import org.craftercms.studio.api.v2.dal.User;
+import org.craftercms.studio.api.v2.service.security.internal.UserServiceInternal;
+import org.craftercms.studio.api.v2.utils.StudioConfiguration;
 import org.springframework.security.access.AccessDecisionVoter;
 
 import java.util.Collection;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
-import static org.craftercms.studio.api.v1.util.StudioConfiguration.CONFIGURATION_SITE_DEFAULT_ADMIN_GROUP;
-import static org.craftercms.studio.api.v1.util.StudioConfiguration.SECURITY_GLOBAL_ADMIN_GROUP;
+import static org.craftercms.studio.api.v1.constant.StudioConstants.SYSTEM_ADMIN_GROUP;
+import static org.craftercms.studio.api.v2.utils.StudioConfiguration.CONFIGURATION_DEFAULT_ADMIN_GROUP;
 
 public abstract class StudioAbstractAccessDecisionVoter implements AccessDecisionVoter {
 
     private final static Logger logger = LoggerFactory.getLogger(StudioAbstractAccessDecisionVoter.class);
+
+    protected SecurityService securityService;
+    protected StudioConfiguration studioConfiguration;
+    protected SiteService siteService;
+    protected UserServiceInternal userServiceInternal;
 
     protected boolean isSiteMember(User currentUser, String userParam) {
         try {
@@ -65,6 +72,9 @@ public abstract class StudioAbstractAccessDecisionVoter implements AccessDecisio
         } catch (UserNotFoundException e) {
             logger.info("User is not site member", e);
             return false;
+        } catch (ServiceLayerException e) {
+            logger.warn("Error getting user membership", e);
+            return false;
         }
     }
 
@@ -82,6 +92,9 @@ public abstract class StudioAbstractAccessDecisionVoter implements AccessDecisio
         } catch (UserNotFoundException e) {
             logger.info("User is not site member", e);
             return false;
+        } catch (ServiceLayerException e) {
+            logger.warn("Error getting user membership", e);
+            return false;
         }
     }
 
@@ -90,19 +103,28 @@ public abstract class StudioAbstractAccessDecisionVoter implements AccessDecisio
             int total = siteService.getSitesPerUserTotal(currentUser.getUsername());
             List<SiteFeed> sitesFeed = siteService.getSitesPerUser(currentUser.getUsername(), 0, total);
 
-            Set<String> sites = new HashSet<String>();
+            Map<String, Long> sites = new HashMap<String, Long>();
             for (SiteFeed site : sitesFeed) {
-                sites.add(site.getSiteId());
+                sites.put(site.getSiteId(), site.getId());
             }
 
-            boolean toRet = sites.contains(siteId);
+            boolean toRet = sites.containsKey(siteId);
             if (toRet) {
-                Set<String> userGroups = securityProvider.getUserGroups(currentUser.getUsername());
-                toRet = userGroups.contains(studioConfiguration.getProperty(CONFIGURATION_SITE_DEFAULT_ADMIN_GROUP));
+                List<Group> userGroups = userServiceInternal.getUserGroups(sites.get(siteId), currentUser.getUsername());
+                for (Group g : userGroups) {
+                    if (g.getGroupName().equals(studioConfiguration.getProperty(CONFIGURATION_DEFAULT_ADMIN_GROUP))) {
+                        toRet = true;
+                        break;
+                    }
+                }
+                toRet = userGroups.contains(studioConfiguration.getProperty(CONFIGURATION_DEFAULT_ADMIN_GROUP));
             }
             return toRet;
         } catch (UserNotFoundException e) {
             logger.info("User is not site member", e);
+            return false;
+        } catch (ServiceLayerException e) {
+            logger.error("Error getting user memberships", e);
             return false;
         }
     }
@@ -112,11 +134,17 @@ public abstract class StudioAbstractAccessDecisionVoter implements AccessDecisio
     }
 
     protected boolean isAdmin(User user) {
-        Set<String> userGroups = securityProvider.getUserGroups(user.getUsername());
+        List<Group> userGroups = null;
+        try {
+            userGroups = userServiceInternal.getUserGroups(-1, user.getUsername());
+        } catch (ServiceLayerException | UserNotFoundException e) {
+            logger.error("Error getting user memberships", e);
+            return false;
+        }
         boolean toRet = false;
         if (CollectionUtils.isNotEmpty(userGroups)) {
-            for (String group : userGroups) {
-                if (StringUtils.equalsIgnoreCase(group, studioConfiguration.getProperty(SECURITY_GLOBAL_ADMIN_GROUP))) {
+            for (Group group : userGroups) {
+                if (StringUtils.equalsIgnoreCase(group.getGroupName(), SYSTEM_ADMIN_GROUP)) {
                     toRet = true;
                     break;
                 }
@@ -125,20 +153,35 @@ public abstract class StudioAbstractAccessDecisionVoter implements AccessDecisio
         return toRet;
     }
 
-    public SecurityProvider getSecurityProvider() { return securityProvider; }
-    public void setSecurityProvider(SecurityProvider securityProvider) { this.securityProvider = securityProvider; }
+    public StudioConfiguration getStudioConfiguration() {
+        return studioConfiguration;
+    }
 
-    public StudioConfiguration getStudioConfiguration() { return studioConfiguration; }
-    public void setStudioConfiguration(StudioConfiguration studioConfiguration) { this.studioConfiguration = studioConfiguration; }
+    public void setStudioConfiguration(StudioConfiguration studioConfiguration) {
+        this.studioConfiguration = studioConfiguration;
+    }
 
-    public SiteService getSiteService() { return siteService; }
-    public void setSiteService(SiteService siteService) { this.siteService = siteService; }
+    public SiteService getSiteService() {
+        return siteService;
+    }
 
-    public SecurityService getSecurityService() { return securityService; }
-    public void setSecurityService(SecurityService securityService) { this.securityService = securityService; }
+    public void setSiteService(SiteService siteService) {
+        this.siteService = siteService;
+    }
 
-    protected SecurityProvider securityProvider;
-    protected SecurityService securityService;
-    protected StudioConfiguration studioConfiguration;
-    protected SiteService siteService;
+    public SecurityService getSecurityService() {
+        return securityService;
+    }
+
+    public void setSecurityService(SecurityService securityService) {
+        this.securityService = securityService;
+    }
+
+    public UserServiceInternal getUserServiceInternal() {
+        return userServiceInternal;
+    }
+
+    public void setUserServiceInternal(UserServiceInternal userServiceInternal) {
+        this.userServiceInternal = userServiceInternal;
+    }
 }

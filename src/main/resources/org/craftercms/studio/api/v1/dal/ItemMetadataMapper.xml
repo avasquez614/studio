@@ -1,7 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
-  ~ Crafter Studio Web-content authoring solution
-  ~ Copyright (C) 2007-2015 Crafter Software Corporation.
+  ~ Copyright (C) 2007-2019 Crafter Software Corporation. All Rights Reserved.
   ~
   ~ This program is free software: you can redistribute it and/or modify
   ~ it under the terms of the GNU General Public License as published by
@@ -44,6 +43,7 @@
         <result property="submittedForDeletion" column="submittedfordeletion"/>
         <result property="sendEmail" column="sendemail"/>
         <result property="commitId" column="commit_id"/>
+        <result property="submittedToEnvironment" column="submittedtoenvironment" />
     </resultMap>
 
     <select id="getProperties" parameterType="java.util.Map" resultMap="ItemMetadataMap">
@@ -73,8 +73,9 @@
             <if test="submittedForDeletion != null">submittedfordeletion=#{submittedForDeletion},</if>
             <if test="sendEmail != null">sendemail=#{sendEmail},</if>
             <if test="submissionComment != null">submissioncomment=#{submissionComment},</if>
-            <if test="launchDate != null">launchdate=#{launchDate}</if>
-            <if test="commitId != null">commit_id=#{commitId}</if>
+            <if test="launchDate != null">launchdate=#{launchDate},</if>
+            <if test="commitId != null">commit_id=#{commitId},</if>
+            <if test="submittedToEnvironment != null">submittedtoenvironment=#{submittedToEnvironment}</if>
         </trim>
         WHERE site=#{site}
         AND path=#{path}
@@ -103,8 +104,9 @@
             <if test="submittedForDeletion != null">submittedfordeletion=#{submittedForDeletion},</if>
             <if test="sendEmail != null">sendemail=#{sendEmail},</if>
             <if test="submissionComment != null">submissioncomment=#{submissionComment},</if>
-            <if test="launchDate != null">launchdate=#{launchDate}</if>
-            <if test="commitId != null">commit_id=#{commitId}</if>
+            <if test="launchDate != null">launchdate=#{launchDate},</if>
+            <if test="commitId != null">commit_id=#{commitId},</if>
+            <if test="submittedToEnvironment != null">submittedtoenvironment=#{submittedToEnvironment}</if>
         </trim>
         WHERE site=#{site}
         AND commit_id=#{commitId}
@@ -134,7 +136,8 @@
             sendemail=#{sendEmail},
             submissioncomment=#{submissionComment},
             launchdate=#{launchDate},
-            commit_id=#{commitId}
+            commit_id=#{commitId},
+            submittedtoenvironment=#{submittedToEnvironment}
         WHERE id = #{id}
     </update>
 
@@ -151,6 +154,10 @@
 
     <select id="countEntries" resultType="int" parameterType="java.util.Map">
         SELECT count(1) FROM item_metadata WHERE site=#{site} AND path=#{path}
+    </select>
+
+    <select id="countAllItems" resultType="int">
+        SELECT count(1) FROM item_metadata;
     </select>
 
     <delete id="deleteEntry" parameterType="java.util.Map">

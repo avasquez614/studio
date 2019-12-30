@@ -1,3 +1,20 @@
+/*
+ * Copyright (C) 2007-2019 Crafter Software Corporation. All Rights Reserved.
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ */
+
 package org.craftercms.studio.api.v2.service.notification;
 
 import java.time.ZonedDateTime;
@@ -5,6 +22,8 @@ import java.util.List;
 import java.util.Locale;
 
 import org.apache.commons.lang3.tuple.Pair;
+import org.craftercms.commons.validation.annotations.param.ValidateParams;
+import org.craftercms.commons.validation.annotations.param.ValidateStringParam;
 
 /**
  * New Interface for Workflow Notification Service.
@@ -65,7 +84,8 @@ public interface NotificationService {
      * @param scheduleDate
      * @param locale Language of the notification ,if null defaults to English.
      */
-    void notifyContentApproval(final String site, final String submitterUser, final List<String> itemsSubmitted, final String approver, final ZonedDateTime scheduleDate, Locale locale);
+    void notifyContentApproval(final String site, final String submitterUser, final List<String> itemsSubmitted,
+                               final String approver, final ZonedDateTime scheduleDate, Locale locale);
 
     /**
      * Gets and process notification message
@@ -106,4 +126,15 @@ public interface NotificationService {
      */
     void notifyContentRejection(final String site,final String submittedBy,final List<String> rejectedItems,final
                                 String rejectionReason, final String userThatRejects,final Locale locale);
+
+    /**
+     * Send email to admin that repository has merge conflict
+     *
+     * @param site site with merge conflict
+     * @param filesUnableToMerge files unable to merge
+     * @param locale language of the message ,if null defaults to English.
+     */
+    @ValidateParams
+    void notifyRepositoryMergeConflict(@ValidateStringParam(name = "site") String site,
+                                       List<String> filesUnableToMerge, Locale locale);
 }

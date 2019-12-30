@@ -1,6 +1,5 @@
 /*
- * Crafter Studio Web-content authoring solution
- * Copyright (C) 2007-2017 Crafter Software Corporation.
+ * Copyright (C) 2007-2019 Crafter Software Corporation. All Rights Reserved.
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -26,5 +25,9 @@ public interface GitLogMapper {
 
     void insertGitLog(Map params);
 
+    void insertGitLogList(Map params);
+
     void markGitLogProcessed(Map params);
+
+    void deleteGitLogForSite(Map params);
 }

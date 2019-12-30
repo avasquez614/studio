@@ -1,6 +1,5 @@
 /*
- * Crafter Studio Web-content authoring solution
- * Copyright (C) 2007-2017 Crafter Software Corporation.
+ * Copyright (C) 2007-2019 Crafter Software Corporation. All Rights Reserved.
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -17,7 +16,7 @@
  */
 package org.craftercms.studio.api.v1.exception;
 
-public class CommitNotFoundException extends ServiceException {
+public class CommitNotFoundException extends ServiceLayerException {
 
     private static final long serialVersionUID = 2960303983858092678L;
 

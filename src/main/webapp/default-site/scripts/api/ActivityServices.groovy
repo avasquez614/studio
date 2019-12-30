@@ -1,6 +1,5 @@
 /*
- * Crafter Studio Web-content authoring solution
- * Copyright (C) 2007-2014 Crafter Software Corporation.
+ * Copyright (C) 2007-2019 Crafter Software Corporation. All Rights Reserved.
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -41,18 +40,4 @@ class ActivityServices {
         return activitiesServicesImpl.getActivities(site, user, num, sort, ascending, excludeLive, filterType)
     }
 
-    static postActivity(context, site, user, path, activityType, extraInfo) {
-        def activitiesServicesImpl = ServiceFactory.getActivityServices(context)
-        return activitiesServicesImpl.postActivity(site, user, path, activityType, extraInfo)
-    }
-
-    static getAuditLog(context, site, start, number, user, actions) {
-        def activitiesServicesImpl = ServiceFactory.getActivityServices(context);
-        return activitiesServicesImpl.getAuditLog(site, start, number, user, actions)
-    }
-
-    static getAuditLogTotal(context, site, user, actions) {
-        def activitiesServicesImpl = ServiceFactory.getActivityServices(context);
-        return activitiesServicesImpl.getAuditLogTotal(site, user, actions)
-    }
 }

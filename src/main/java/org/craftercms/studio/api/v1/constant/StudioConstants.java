@@ -1,21 +1,19 @@
-/*******************************************************************************
- * 	   Crafter Studio
+/*
+ * Copyright (C) 2007-2019 Crafter Software Corporation. All Rights Reserved.
  *
- *     Copyright (C) 2007-2016 Crafter Software Corporation.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
- *     This program is free software: you can redistribute it and/or modify
- *     it under the terms of the GNU General  License as published by
- *     the Free Software Foundation, either version 3 of the License, or
- *     (at your option) any later version.
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
  *
- *     This program is distributed in the hope that it will be useful,
- *     but WITHOUT ANY WARRANTY; without even the implied warranty of
- *     MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- *     GNU General  License for more details.
- *
- *     You should have received a copy of the GNU General  License
- *     along with this program.  If not, see <http://www.gnu.org/licenses/>.
- ******************************************************************************/
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ */
 package org.craftercms.studio.api.v1.constant;
 
 /**
@@ -52,11 +50,16 @@ package org.craftercms.studio.api.v1.constant;
 	/** variable names in configuration properties **/
    String PATTERN_CONTENT_TYPE = "\\{content\\-type\\}";
    String PATTERN_ENVIRONMENT = "\\{environment\\}";
+   String PATTERN_MODULE = "\\{module\\}";
    String PATTERN_ID = "\\$\\{id\\}";
    String PATTERN_KEY = "\\{key\\}";
    String PATTERN_SANDBOX = "\\$\\{sandbox\\}";
    String PATTERN_SITE = "\\{site\\}";
+   String PATTERN_PATH = "\\{path\\}";
+   String PATTERN_FROM_PATH = "\\{fromPath\\}";
+   String PATTERN_TO_PATH = "\\{toPath\\}";
    String PATTERN_WEB_PROJECT = "\\$\\{webproject\\}";
+   String PATTERN_BASE_URL = "\\{baseUrl\\}";
 
    /** Studio Structure Constants **/
    String DESCRIPTOR_ROOT_PATH  = "/site";
@@ -95,6 +98,8 @@ package org.craftercms.studio.api.v1.constant;
      */
     String SITE_DEFAULT_GROUPS_DESCRIPTION = " site default group";
     String SITE_NAME = "siteName";
+    String SITE_UUID_FILENAME = "site-uuid.txt";
+    String SITE_UUID_FILE_COMMENT = "# THIS IS A SYSTEM FILE. PLEASE DO NOT EDIT NOR DELETE IT!!!";
 
     /**
      * Content types constants
@@ -110,12 +115,85 @@ package org.craftercms.studio.api.v1.constant;
     String CONTENT_TYPE_CONFIGURATION = "configuration";
     String CONTENT_TYPE_FOLDER = "folder";
     String CONTENT_TYPE_USER = "user";
+    String CONTENT_TYPE_GROUP = "group";
     String CONTENT_TYPE_TAXONOMY_REGEX = "/site/taxonomy/([^<]+)\\.xml";
     String CONTENT_TYPE_ALL = "all";
     String CONTENT_TYPE_FORM_DEFINITION = "formDefinition";
+    String CONTENT_TYPE_SITE = "site";
+    String CONTENT_TYPE_REMOTE_REPOSITORY = "remoteRepository";
+    String CONTENT_TYPE_CONFIG_FOLDER = "content-types";
+    String CONTENT_TYPE_SCRIPT = "script";
 
     /**
      * System constants
      */
     String FILE_SEPARATOR = "/";
+    String SYSTEM_ADMIN_GROUP = "system_admin";
+    String ADMIN_ROLE = "admin";
+
+    /**
+     * Remote repository create option
+     */
+    String REMOTE_REPOSITORY_CREATE_OPTION_CLONE = "clone";
+    String REMOTE_REPOSITORY_CREATE_OPTION_PUSH = "push";
+
+    String INDEX_FILE = "index.xml";
+
+    String SECURITY_AUTHENTICATION_TYPE = "authentication_type";
+    String SECURITY_AUTHENTICATION_TYPE_DB = "db";
+    String SECURITY_AUTHENTICATION_TYPE_LDAP = "ldap";
+    String SECURITY_AUTHENTICATION_TYPE_HEADERS = "headers";
+
+    String JSON_PROPERTY_ITEM = "item";
+    String JSON_PROPERTY_DEPENDENCIES = "dependencies";
+
+    /**
+     * API Request Parameter Names
+     */
+    String API_REQUEST_PARAM_SITE = "site";
+    String API_REQUEST_PARAM_SITE_ID = "site_id";
+    String API_REQUEST_PARAM_ENTITIES = "entities";
+    String API_REQUEST_PARAM_ENVIRONMENT = "environment";
+
+    /**
+     * Site config xml elements
+     */
+    String SITE_CONFIG_XML_ELEMENT_PUBLISHED_REPOSITORY = "published-repository";
+    String SITE_CONFIG_XML_ELEMENT_ENABLE_STAGING_ENVIRONMENT = "enable-staging-environment";
+    String SITE_CONFIG_XML_ELEMENT_STAGING_ENVIRONMENT = "staging-environment";
+    String SITE_CONFIG_XML_ELEMENT_LIVE_ENVIRONMENT = "live-environment";
+    String SITE_CONFIG_ELEMENT_SANDBOX_BRANCH = "sandbox-branch";
+    String SITE_CONFIG_ELEMENT_PLUGIN_FOLDER_PATTERN = "plugin-folder-pattern";
+
+    /**
+     * Repository commit messages variables
+     */
+    String REPO_COMMIT_MESSAGE_USERNAME_VAR = "{username}";
+    String REPO_COMMIT_MESSAGE_PATH_VAR = "{path}";
+
+    /**
+     * Session attributes
+     */
+    String HTTP_SESSION_ATTRIBUTE_AUTHENTICATION = "studio_authentication";
+
+    int DEFAULT_ORGANIZATION_ID = 1;
+
+    String REMOVE_SYSTEM_ADMIN_MEMBER_LOCK = "remove_system_admin_member_lock";
+
+    /**
+     * Cluster registration properties
+     */
+    String CLUSTER_MEMBER_LOCAL_ADDRESS = "localAddress";
+    String CLUSTER_MEMBER_AUTHENTICATION_TYPE = "authenticationType";
+    String CLUSTER_MEMBER_USERNAME = "username";
+    String CLUSTER_MEMBER_PASSWORD = "password";
+    String CLUSTER_MEMBER_TOKEN = "token";
+    String CLUSTER_MEMBER_PRIVATE_KEY = "privateKey";
+
+    /* Map keys */
+    String KEY_CONTENT_TYPE = "contentType";
+
+    /* Modules */
+    String MODULE_STUDIO = "studio";
+    String MODULE_ENGINE = "engine";
 }

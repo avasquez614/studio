@@ -1,7 +1,6 @@
 
 /*
- * Crafter Studio Web-content authoring solution
- * Copyright (C) 2007-2014 Crafter Software Corporation.
+ * Copyright (C) 2007-2019 Crafter Software Corporation. All Rights Reserved.
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -18,7 +17,6 @@
  */
 package scripts.api.impl.activity
 
-import org.craftercms.studio.api.v1.service.activity.ActivityService.ActivityType;
 
 /**
  * @author Dejan Brkic
@@ -38,22 +36,8 @@ class SpringActivityServices {
 
     def getActivities(site, user, num, sort, ascending, excludeLive, filterType) {
 
-        def springBackedService = this.context.applicationContext.get("cstudioActivityService");
-        return springBackedService.getActivities(site, user, num, sort, ascending, excludeLive, filterType);
+        def springBackedService = this.context.applicationContext.get("auditService");
+        return springBackedService.getUserActivities(site, user, num, sort, ascending, excludeLive, filterType);
     }
 
-    def postActivity(site, user, path, activityType, extraInfo) {
-        def springBackedService = this.context.applicationContext.get("cstudioActivityService");
-        return springBackedService.postActivity(site, user, path, activityType, extraInfo);
-    }
-
-    def getAuditLog(site, start, number, user, actions) {
-        def springBackedService = this.context.applicationContext.get("cstudioActivityService");
-        return springBackedService.getAuditLogForSite(site, start, number, user, actions)
-    }
-
-    def getAuditLogTotal(site, user, actions) {
-        def springBackedService = this.context.applicationContext.get("cstudioActivityService");
-        return springBackedService.getAuditLogForSiteTotal(site, user, actions)
-    }
 }

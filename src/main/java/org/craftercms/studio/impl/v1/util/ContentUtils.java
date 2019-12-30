@@ -1,23 +1,21 @@
-/*******************************************************************************
- * Crafter Studio Web-content authoring solution
- *     Copyright (C) 2007-2016 Crafter Software Corporation.
+/*
+ * Copyright (C) 2007-2019 Crafter Software Corporation. All Rights Reserved.
  *
- *     This program is free software: you can redistribute it and/or modify
- *     it under the terms of the GNU General Public License as published by
- *     the Free Software Foundation, either version 3 of the License, or
- *     (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
- *     This program is distributed in the hope that it will be useful,
- *     but WITHOUT ANY WARRANTY; without even the implied warranty of
- *     MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- *     GNU General Public License for more details.
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
  *
- *     You should have received a copy of the GNU General Public License
- *     along with this program.  If not, see <http://www.gnu.org/licenses/>.
- ******************************************************************************/
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ */
 package org.craftercms.studio.impl.v1.util;
 
-import org.apache.commons.codec.binary.Hex;
 import org.apache.commons.io.IOUtils;
 import org.craftercms.studio.api.v1.constant.StudioConstants;
 import org.craftercms.studio.api.v1.log.Logger;
@@ -28,8 +26,6 @@ import org.dom4j.io.SAXReader;
 import org.xml.sax.SAXException;
 
 import java.io.*;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
 import java.util.List;
 
 import static org.craftercms.studio.api.v1.constant.StudioConstants.FILE_SEPARATOR;
@@ -132,46 +128,6 @@ public class ContentUtils {
 		}
 		return false;
 	}
-
-	public static String getMd5ForFile(InputStream input) {
-		String result = null;
-		MessageDigest md = null;
-		try {
-			md = MessageDigest.getInstance("MD5");
-
-			md.reset();
-			byte[] bytes = new byte[1024];
-			int numBytes;
-			input.mark(Integer.MAX_VALUE);
-			while ((numBytes = input.read(bytes)) != -1) {
-				md.update(bytes, 0, numBytes);
-			}
-			byte[] digest = md.digest();
-			result = new String(Hex.encodeHex(digest));
-			input.reset();
-		} catch (NoSuchAlgorithmException e) {
-			logger.error("Error while creating MD5 digest", e);
-		} catch (IOException e) {
-			logger.error("Error while reading input stream", e);
-		} finally {
-
-		}
-		return result;
-	}
-
-    public static String getMd5ForFile(String data) {
-        InputStream is = null;
-        String fileName = null;
-
-        try {
-            is = new ByteArrayInputStream(data.getBytes("UTF-8"));
-
-            fileName = getMd5ForFile(is);
-        } catch(UnsupportedEncodingException e) {
-            logger.error("Error while creating MD5 digest", e);
-        }
-        return fileName;
-    }
 
 	public static String getParentUrl(String url) {
 		int lastIndex = url.lastIndexOf(FILE_SEPARATOR);

@@ -1,6 +1,5 @@
 /*
- * Crafter Studio Web-content authoring solution
- * Copyright (C) 2007-2016 Crafter Software Corporation.
+ * Copyright (C) 2007-2019 Crafter Software Corporation. All Rights Reserved.
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -18,9 +17,12 @@
 
 package org.craftercms.studio.api.v1.service.security;
 
-import org.craftercms.studio.api.v1.exception.ServiceException;
+import org.craftercms.studio.api.v1.exception.ServiceLayerException;
 import org.craftercms.studio.api.v1.exception.SiteNotFoundException;
-import org.craftercms.studio.api.v1.exception.security.*;
+import org.craftercms.studio.api.v1.exception.security.PasswordDoesNotMatchException;
+import org.craftercms.studio.api.v1.exception.security.UserExternallyManagedException;
+import org.craftercms.studio.api.v1.exception.security.UserNotFoundException;
+import org.craftercms.studio.impl.v2.service.security.Authentication;
 
 import javax.servlet.http.HttpServletRequest;
 import java.util.List;
@@ -39,7 +41,7 @@ public interface SecurityService {
 	 * @param username
 	 * @param password
 	 */
-	String authenticate(String username, String password) throws BadCredentialsException, AuthenticationSystemException;
+	String authenticate(String username, String password) throws Exception;
 
 	/**
 	 * Returns the username of the current user OR NULL if no user is authenticated
@@ -48,23 +50,24 @@ public interface SecurityService {
 
     String getCurrentToken();
 
+    /**
+     * Returns the {@link Authentication} for the current user or null if not user is authenticated.
+     */
+    Authentication getAuthentication();
+
     Set<String> getUserRoles(String site, String user);
 
-    Map<String, Object> getUserProfile(String user);
+    Map<String, Object> getUserProfile(String user) throws ServiceLayerException, UserNotFoundException;
 
     Set<String> getUserPermissions(String site, String path, String user, List<String> groups);
 
     boolean validateTicket(String token);
 
-    void addUserGroup(String groupName);
-
-    void addUserGroup(String parentGroup, String groupName);
-
     void reloadConfiguration(String site);
 
     void reloadGlobalConfiguration();
 
-    boolean logout();
+    boolean logout() throws SiteNotFoundException;
 
     /**
      * Check if user exists
@@ -72,203 +75,15 @@ public interface SecurityService {
      * @param username username
      * @return true if user exists
      */
-    boolean userExists(String username);
+    boolean userExists(String username) throws ServiceLayerException;
 
-    /**
-     * Create new user with given parameters
-     *
-     * @param username username
-     * @param password password
-     * @param firstName User's first name
-     * @param lastName User's last name
-     * @param email User's email address
-     * @return true if success, otherwise false
-     */
-    boolean createUser(String username, String password, String firstName, String lastName, String email) throws UserAlreadyExistsException;
-
-    /**
-     * Delete user with given username
-     *
-     * @param username
-     * @return true if user is successfully deleted
-     */
-    boolean deleteUser(String username) throws UserNotFoundException, DeleteUserNotAllowedException;
-
-    /**
-     * Update user details
-     *
-     * @param username
-     * @param firstName
-     * @param lastName
-     * @param email
-     * @return true if user is successfully updated
-     */
-    boolean updateUser(String username, String firstName, String lastName, String email) throws UserNotFoundException, UserExternallyManagedException;
-
-    /**
-     * Enable/disable user with given username
-     *
-     * @param username username
-     * @param enabled true: enable user; false: disable user
-     * @return true if user is successfully enabled/disabled
-     */
-    boolean enableUser(String username, boolean enabled) throws UserNotFoundException, UserExternallyManagedException;
-
-    /**
-     * Create group with given parameters
-     *
-     * @param groupName
-     * @param description
-     * @param siteId
-     * @return true if group is successfully created
-     */
-    boolean createGroup(String groupName, String description, String siteId) throws GroupAlreadyExistsException, SiteNotFoundException;
-
-    /**
-     * Get status for given user
-     *
-     * @param username username
-     * @return user status
-     */
-    Map<String, Object> getUserStatus(String username) throws UserNotFoundException;
-
-    /**
-     * Get all users
-     *
-     * @return list of all users
-     */
-    List<Map<String, Object>> getAllUsers(int start, int number);
 
     /**
      * Get all users
      *
      * @return number of all users
      */
-    int getAllUsersTotal();
-
-    /**
-     * Get all users for given site
-     *
-     * @param site
-     * @param start
-     * @param number
-     * @return get list of users per site, paginated
-     */
-    List<Map<String, Object>> getUsersPerSite(String site, int start, int number) throws SiteNotFoundException;
-    /**
-     * Get number of all users for given site
-     *
-     * @param site
-     * @return total number of users for site
-     */
-    int getUsersPerSiteTotal(String site) throws SiteNotFoundException;
-
-
-    /**
-     * Get group for given site with given name
-     *
-     * @param site site id
-     * @param group group name
-     * @return group details
-     */
-    Map<String, Object> getGroup(String site, String group) throws GroupNotFoundException;
-
-    /**
-     * Get all groups
-     *
-     * @param start start index
-     * @param number Number of records to retrieve in the result set
-     */
-    List<Map<String, Object>> getAllGroups(int start, int number);
-
-    /**
-     * Get all groups for given site
-     *
-     * @param site site id
-     * @param start start index
-     * @param number number of records to retrieve in the result set
-     * @return list of groups per site, paginated
-     */
-    List<Map<String, Object>> getGroupsPerSite(String site, int start, int number) throws SiteNotFoundException;
-
-    /**
-     * Get number of all groups for given site
-     *
-     * @param site site id
-     * @return total number of groups for site
-     */
-    int getGroupsPerSiteTotal(String site) throws SiteNotFoundException;
-
-    /**
-     * Get all users for given site and group
-     *
-     * @param site site id
-     * @param group group name
-     * @param start start index
-     * @param number number of records to retrieve in the result set
-     * @return list of users
-     */
-    List<Map<String, Object>> getUsersPerGroup(String site, String group, int start, int number) throws
-	    GroupNotFoundException;
-
-    /**
-     * Get number of all users for given site and group
-     *
-     * @param site site id
-     * @param group group name
-     * @return list of users
-     */
-    int getUsersPerGroupTotal(String site, String group) throws
-            GroupNotFoundException;
-
-    /**
-     * Update group with given parameters
-     *
-     * @param groupName
-     * @param description
-     * @param siteId
-     * @return true if group is successfully updated
-     */
-    boolean updateGroup(String siteId, String groupName, String description) throws GroupNotFoundException;
-
-    /**
-     * Delete group for given site with given name
-     *
-     * @param site site id
-     * @param group group name
-     * @return true if group is successfully deleted
-     */
-    boolean deleteGroup(String site, String group) throws GroupNotFoundException;
-
-    /**
-     * Add user to the group
-     *
-     * @param siteId site id
-     * @param groupName group name
-     * @param username username
-     * @return true if user is successfully added to the group
-     */
-    boolean addUserToGroup(String siteId, String groupName, String username) throws UserAlreadyExistsException,
-	    UserNotFoundException, GroupNotFoundException;
-
-    /**
-     * Remove user from the group
-     *
-     * @param siteId site id
-     * @param groupName group name
-     * @param username username
-     * @return true if user is successfully removed from the group
-     */
-    boolean removeUserFromGroup(String siteId, String groupName, String username) throws UserNotFoundException,
-	    GroupNotFoundException;
-
-    /**
-     * Forgot password for given user
-     *
-     * @param username username
-     * @return forgot password
-     */
-    Map<String, Object> forgotPassword(String username) throws ServiceException, UserNotFoundException, UserExternallyManagedException;
+    int getAllUsersTotal() throws ServiceLayerException;
 
     /**
      * Forgot password token to validate
@@ -276,7 +91,8 @@ public interface SecurityService {
      * @param token token
      * @return true if given token is valid
      */
-    boolean validateToken(String token) throws UserNotFoundException, UserExternallyManagedException;
+    boolean validateToken(String token) throws UserNotFoundException, UserExternallyManagedException,
+        ServiceLayerException;
 
     /**
      * Change password
@@ -286,7 +102,8 @@ public interface SecurityService {
      * @param newPassword new password
      * @return true if user's password is successfully changed
      */
-    boolean changePassword(String username, String current, String newPassword) throws UserNotFoundException, PasswordDoesNotMatchException, UserExternallyManagedException;
+    boolean changePassword(String username, String current, String newPassword) throws UserNotFoundException,
+        PasswordDoesNotMatchException, UserExternallyManagedException, ServiceLayerException;
 
     /**
      * Set user password - forgot password token
@@ -295,7 +112,8 @@ public interface SecurityService {
      * @param newPassword new password
      * @return true if uses's password is successfully set
      */
-    Map<String, Object> setUserPassword(String token, String newPassword) throws UserNotFoundException, UserExternallyManagedException;
+    Map<String, Object> setUserPassword(String token, String newPassword) throws UserNotFoundException,
+        UserExternallyManagedException, ServiceLayerException;
 
     /**
      * Reset user password
@@ -304,7 +122,8 @@ public interface SecurityService {
      * @param newPassword new password
      * @return true if user's password is successfully reset
      */
-    boolean resetPassword(String username, String newPassword) throws UserNotFoundException, UserExternallyManagedException;
+    boolean resetPassword(String username, String newPassword) throws UserNotFoundException,
+        UserExternallyManagedException, ServiceLayerException;
 
     /**
      * Validate user's active session
@@ -312,12 +131,13 @@ public interface SecurityService {
      * @param request
      * @return true if user session is valid
      */
-    boolean validateSession(HttpServletRequest request);
+    boolean validateSession(HttpServletRequest request) throws ServiceLayerException;
 
     /**
      * Check if given user is site admin
      * @param username user
+     * @param site site identifier
      * @return true if user belongs to admin group
      */
-    boolean isSiteAdmin(String username);
+    boolean isSiteAdmin(String username, String site);
 }

@@ -1,6 +1,5 @@
 /*
- * Crafter Studio Web-content authoring solution
- * Copyright (C) 2007-2016 Crafter Software Corporation.
+ * Copyright (C) 2007-2019 Crafter Software Corporation. All Rights Reserved.
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -120,6 +119,25 @@ public enum State {
             EXISTING_SUBMITTED_WITH_WF_SCHEDULED_LOCKED,
             EXISTING_SUBMITTED_WITH_WF_UNSCHEDULED_LOCKED,
             EXISTING_SUBMITTED_NO_WF_SCHEDULED_LOCKED
+    );
+
+    public static final List<State> IN_PROGRESS_STATES = Arrays.asList(
+            NEW_UNPUBLISHED_LOCKED,
+            NEW_UNPUBLISHED_UNLOCKED,
+            NEW_SUBMITTED_WITH_WF_SCHEDULED,
+            NEW_SUBMITTED_WITH_WF_SCHEDULED_LOCKED,
+            NEW_SUBMITTED_WITH_WF_UNSCHEDULED,
+            NEW_SUBMITTED_WITH_WF_UNSCHEDULED_LOCKED,
+            NEW_PUBLISHING_FAILED,
+            NEW_DELETED,
+            EXISTING_EDITED_LOCKED,
+            EXISTING_EDITED_UNLOCKED,
+            EXISTING_SUBMITTED_WITH_WF_SCHEDULED,
+            EXISTING_SUBMITTED_WITH_WF_SCHEDULED_LOCKED,
+            EXISTING_SUBMITTED_WITH_WF_UNSCHEDULED,
+            EXISTING_SUBMITTED_WITH_WF_UNSCHEDULED_LOCKED,
+            EXISTING_PUBLISHING_FAILED,
+            EXISTING_DELETED
     );
 
     public static final List<State> CHANGE_SET_STATES = Arrays.asList(

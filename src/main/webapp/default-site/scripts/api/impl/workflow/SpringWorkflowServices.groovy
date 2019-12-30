@@ -1,7 +1,6 @@
 
 /*
- * Crafter Studio Web-content authoring solution
- * Copyright (C) 2007-2014 Crafter Software Corporation.
+ * Copyright (C) 2007-2019 Crafter Software Corporation. All Rights Reserved.
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -65,11 +64,6 @@ class SpringWorkflowServices {
         springBackedService.submitToGoLive (site, user, requestBody);
     }
 
-    def submitToDelete(site, user, requestBody) {
-        def springBackedService = this.context.applicationContext.get("cstudioWorkflowService");
-        springBackedService.submitToDelete(site, user, requestBody);
-    }
-
     def reject(site, user, requestBody) {
         def springBackedService = this.context.applicationContext.get("cstudioWorkflowService");
         return springBackedService.reject(site, user, requestBody);
@@ -85,12 +79,5 @@ class SpringWorkflowServices {
         def springBackedService = this.context.applicationContext.get("cstudioWorkflowService");
         return springBackedService.createJob(site, items, workflowId, properties);
     }
-
-    def getWorkflowJobs(site) {
-        def springBackedService = this.context.applicationContext.get("cstudioWorkflowService");
-        return springBackedService.getActiveJobs();
-    }
-
-
 }
 

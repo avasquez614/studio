@@ -1,6 +1,5 @@
 /*
- * Crafter Studio Web-content authoring solution
- * Copyright (C) 2007-2016 Crafter Software Corporation.
+ * Copyright (C) 2007-2019 Crafter Software Corporation. All Rights Reserved.
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -17,6 +16,7 @@
  */
 package org.craftercms.studio.api.v1.content.pipeline;
 
+import org.craftercms.studio.api.v1.exception.SiteNotFoundException;
 import org.craftercms.studio.api.v1.to.ContentItemTO;
 
 public interface DmContentProcessor {
@@ -29,7 +29,7 @@ public interface DmContentProcessor {
      * @param isPreview
      * @return last child folder in the path
      */
-    ContentItemTO createMissingFoldersInPath(String site, String path, boolean isPreview);
+    ContentItemTO createMissingFoldersInPath(String site, String path, boolean isPreview) throws SiteNotFoundException;
 
     /**
      * change file to folder content. See WcmClipboardServiceImpl when updating this logic.
@@ -39,5 +39,5 @@ public interface DmContentProcessor {
      * @param path content path
      * @return new content path
      */
-    String fileToFolder(String site, String path);
+    String fileToFolder(String site, String path) throws SiteNotFoundException;
 }
